@@ -1,0 +1,741 @@
+{% extends "base.html" %}
+
+{% block title %}Alert Management - AI-SOAR Platform{% endblock %}
+
+{% block extra_css %}
+<style>
+.alert-priority-critical { border-left: 4px solid var(--threat-critical); }
+.alert-priority-high { border-left: 4px solid var(--threat-high); }
+.alert-priority-medium { border-left: 4px solid var(--threat-medium); }
+.alert-priority-low { border-left: 4px solid var(--threat-low); }
+
+.alert-row.selected {
+    background-color: #f0f9ff !important;
+    border: 2px solid #3b82f6;
+}
+
+.bulk-actions-bar {
+    position: sticky;
+    top: 76px;
+    z-index: 1000;
+    background: #ffffff;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 0.75rem 0;
+    display: none;
+}
+
+.bulk-actions-bar.show {
+    display: block;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Alert Management Header -->
+<div class="row mb-4">
+    <div class="col">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h2 mb-1">
+                    <i class="fas fa-exclamation-triangle me-2 text-danger"></i>
+                    Alert Management
+                </h1>
+                <p class="text-muted mb-0">Comprehensive security alert investigation and response</p>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary" onclick="refreshAlerts()">
+                    <i class="fas fa-sync-alt me-1"></i>
+                    Refresh
+                </button>
+                <button class="btn btn-primary" onclick="createManualAlert()">
+                    <i class="fas fa-plus me-1"></i>
+                    Create Alert
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alert Statistics Dashboard -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="security-card security-card-critical">
+            <div class="card-body text-center">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h3 class="text-danger mb-0" id="criticalAlerts">--</h3>
+                        <small class="text-muted">Critical Alerts</small>
+                    </div>
+                    <i class="fas fa-fire fa-2x text-danger"></i>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted">
+                        <span id="criticalUnresolved">--</span> unresolved
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="security-card security-card-high">
+            <div class="card-body text-center">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h3 class="text-warning mb-0" id="highAlerts">--</h3>
+                        <small class="text-muted">High Priority</small>
+                    </div>
+                    <i class="fas fa-exclamation-triangle fa-2x text-warning"></i>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted">
+                        Avg. Response: <span id="avgResponseTime">--</span>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="security-card">
+            <div class="card-body text-center">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h3 class="text-primary mb-0" id="totalInvestigating">--</h3>
+                        <small class="text-muted">Investigating</small>
+                    </div>
+                    <i class="fas fa-search fa-2x text-primary"></i>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted">
+                        <span id="assignedAnalysts">--</span> analysts assigned
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="security-card">
+            <div class="card-body text-center">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h3 class="text-success mb-0" id="resolvedToday">--</h3>
+                        <small class="text-muted">Resolved Today</small>
+                    </div>
+                    <i class="fas fa-check-circle fa-2x text-success"></i>
+                </div>
+                <div class="mt-2">
+                    <small class="text-muted">
+                        MTTR: <span id="mttr">--</span> min
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced Advanced Filters with Progressive Disclosure -->
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <button class="btn btn-link p-0 text-decoration-none h5 mb-0"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#advancedFilters"
+                    aria-expanded="false"
+                    aria-controls="advancedFilters"
+                    aria-label="Toggle advanced filters">
+                <i class="fas fa-filter me-2"></i>
+                Advanced Filters
+                <i class="fas fa-chevron-down ms-2 transition-rotate" aria-hidden="true"></i>
+            </button>
+            <div class="d-flex gap-2">
+                <span class="badge bg-primary" id="activeFiltersCount" style="display: none;">
+                    <span id="filterCount">0</span> active
+                </span>
+                <button class="btn btn-sm btn-outline-secondary"
+                        onclick="clearAllFilters()"
+                        title="Clear all active filters"
+                        aria-label="Clear all filters">
+                    <i class="fas fa-times me-1"></i>
+                    Clear All
+                </button>
+                <button class="btn btn-sm btn-outline-primary"
+                        onclick="saveFilterPreset()"
+                        title="Save current filter configuration"
+                        aria-label="Save filter preset">
+                    <i class="fas fa-save me-1"></i>
+                    Save Preset
+                </button>
+            </div>
+        </div>
+    </div>
+    <div class="collapse" id="advancedFilters">
+        <div class="card-body">
+            <!-- Quick Filter Pills -->
+            <div class="mb-3">
+                <label class="form-label fw-semibold">Quick Filters</label>
+                <div class="d-flex flex-wrap gap-2">
+                    <button class="btn btn-sm btn-outline-danger quick-filter"
+                            data-filter="severity" data-value="critical"
+                            onclick="applyQuickFilter(this)">
+                        <i class="fas fa-fire me-1"></i> Critical Only
+                    </button>
+                    <button class="btn btn-sm btn-outline-warning quick-filter"
+                            data-filter="status" data-value="new"
+                            onclick="applyQuickFilter(this)">
+                        <i class="fas fa-new me-1"></i> New Alerts
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary quick-filter"
+                            data-filter="assignee" data-value="current_user"
+                            onclick="applyQuickFilter(this)">
+                        <i class="fas fa-user me-1"></i> My Alerts
+                    </button>
+                    <button class="btn btn-sm btn-outline-info quick-filter"
+                            data-filter="timeRange" data-value="1h"
+                            onclick="applyQuickFilter(this)">
+                        <i class="fas fa-clock me-1"></i> Last Hour
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary quick-filter"
+                            data-filter="status" data-value="unresolved"
+                            onclick="applyQuickFilter(this)">
+                        <i class="fas fa-exclamation-circle me-1"></i> Unresolved
+                    </button>
+                </div>
+            </div>
+
+            <!-- Detailed Filters -->
+            <div class="row g-3">
+                <div class="col-lg-3 col-md-6">
+                    <label for="severityFilter" class="form-label">Severity</label>
+                    <div class="position-relative">
+                        <select class="form-select" id="severityFilter" onchange="applyFilters()" aria-describedby="severityHelp">
+                            <option value="">All Severities</option>
+                            <option value="critical">🔴 Critical</option>
+                            <option value="high">🟠 High</option>
+                            <option value="medium">🟡 Medium</option>
+                            <option value="low">🟢 Low</option>
+                        </select>
+                        <div id="severityHelp" class="form-text">Filter by threat severity level</div>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <label for="statusFilter" class="form-label">Investigation Status</label>
+                    <div class="position-relative">
+                        <select class="form-select" id="statusFilter" onchange="applyFilters()" aria-describedby="statusHelp">
+                            <option value="">All Statuses</option>
+                            <option value="new">🆕 New</option>
+                            <option value="investigating">🔍 Investigating</option>
+                            <option value="contained">🛡️ Contained</option>
+                            <option value="resolved">✅ Resolved</option>
+                            <option value="false_positive">❌ False Positive</option>
+                        </select>
+                        <div id="statusHelp" class="form-text">Current investigation status</div>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <label for="assigneeFilter" class="form-label">Assignee</label>
+                    <div class="position-relative">
+                        <select class="form-select" id="assigneeFilter" onchange="applyFilters()" aria-describedby="assigneeHelp">
+                            <option value="">All Assignees</option>
+                            <option value="unassigned">👤 Unassigned</option>
+                            <option value="current_user">👨‍💼 My Alerts</option>
+                            <!-- Dynamically populated -->
+                        </select>
+                        <div id="assigneeHelp" class="form-text">Filter by assigned analyst</div>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <label for="timeRangeFilter" class="form-label">Time Range</label>
+                    <div class="position-relative">
+                        <select class="form-select" id="timeRangeFilter" onchange="applyFilters(); toggleCustomDateRange()" aria-describedby="timeHelp">
+                            <option value="1h">Last Hour</option>
+                            <option value="24h" selected>Last 24 Hours</option>
+                            <option value="7d">Last 7 Days</option>
+                            <option value="30d">Last 30 Days</option>
+                            <option value="custom">📅 Custom Range</option>
+                        </select>
+                        <div id="timeHelp" class="form-text">Alert creation time period</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Custom Date Range (Hidden by default) -->
+            <div class="row g-3 mt-2" id="customDateRange" style="display: none;">
+                <div class="col-md-6">
+                    <label for="startDate" class="form-label">Start Date</label>
+                    <input type="datetime-local" class="form-control" id="startDate" onchange="applyFilters()">
+                </div>
+                <div class="col-md-6">
+                    <label for="endDate" class="form-label">End Date</label>
+                    <input type="datetime-local" class="form-control" id="endDate" onchange="applyFilters()">
+                </div>
+            </div>
+
+            <!-- Second Row of Filters -->
+            <div class="row g-3 mt-2">
+                <div class="col-lg-6 col-md-12">
+                    <label for="searchFilter" class="form-label">Search</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-search" aria-hidden="true"></i></span>
+                        <input type="text"
+                               class="form-control"
+                               id="searchFilter"
+                               placeholder="Search by alert name, ID, IOCs, or description..."
+                               onkeyup="debounceSearch()"
+                               aria-describedby="searchHelp"
+                               autocomplete="off">
+                        <button class="btn btn-outline-secondary"
+                                type="button"
+                                onclick="clearSearch()"
+                                title="Clear search"
+                                aria-label="Clear search">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div id="searchHelp" class="form-text">Search across alert names, IDs, IOCs, and descriptions</div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <label for="mitreFilter" class="form-label">MITRE ATT&CK Technique</label>
+                    <div class="position-relative">
+                        <select class="form-select" id="mitreFilter" onchange="applyFilters()" aria-describedby="mitreHelp">
+                            <option value="">All Techniques</option>
+                            <!-- Dynamically populated with MITRE techniques -->
+                        </select>
+                        <div id="mitreHelp" class="form-text">Filter by attack technique</div>
+                    </div>
+                </div>
+                <div class="col-lg-3 col-md-6">
+                    <label for="riskScoreFilter" class="form-label">Risk Score Range</label>
+                    <div class="position-relative">
+                        <select class="form-select" id="riskScoreFilter" onchange="applyFilters()" aria-describedby="riskHelp">
+                            <option value="">All Risk Scores</option>
+                            <option value="90-100">⚠️ 90-100 (Critical Risk)</option>
+                            <option value="70-89">🔴 70-89 (High Risk)</option>
+                            <option value="40-69">🟡 40-69 (Medium Risk)</option>
+                            <option value="0-39">🟢 0-39 (Low Risk)</option>
+                        </select>
+                        <div id="riskHelp" class="form-text">Composite risk assessment score</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced Search Options -->
+            <div class="row mt-3">
+                <div class="col-12">
+                    <div class="border-top pt-3">
+                        <h6 class="fw-semibold mb-2">Advanced Search Options</h6>
+                        <div class="row g-2">
+                            <div class="col-auto">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="includeResolved" onchange="applyFilters()">
+                                    <label class="form-check-label" for="includeResolved">
+                                        Include resolved alerts
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="includeCorrelated" onchange="applyFilters()">
+                                    <label class="form-check-label" for="includeCorrelated">
+                                        Show correlated alerts only
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-auto">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="hasIOCs" onchange="applyFilters()">
+                                    <label class="form-check-label" for="hasIOCs">
+                                        Has IOCs
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Enhanced Bulk Actions Bar with Better Mobile Support -->
+<div class="bulk-actions-bar" id="bulkActionsBar" role="toolbar" aria-label="Bulk alert actions">
+    <div class="container-fluid">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-3">
+                <span class="fw-medium">
+                    <span id="selectedCount" aria-live="polite">0</span> alert(s) selected
+                </span>
+                <button class="btn btn-sm btn-outline-secondary d-flex align-items-center"
+                        onclick="selectAllVisible()"
+                        title="Select all visible alerts"
+                        aria-label="Select all visible alerts">
+                    <i class="fas fa-check-double me-1"></i>
+                    <span class="d-none d-md-inline">Select All</span>
+                </button>
+            </div>
+            <div class="btn-group" role="group" aria-label="Bulk actions">
+                <div class="btn-group" role="group">
+                    <button class="btn btn-sm btn-primary dropdown-toggle"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                            aria-label="Assignment actions">
+                        <i class="fas fa-user me-1"></i>
+                        <span class="d-none d-sm-inline">Assign</span>
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="bulkAssignToMe()">
+                            <i class="fas fa-user-plus me-2"></i>Assign to Me
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="bulkAssignToAnalyst()">
+                            <i class="fas fa-user-friends me-2"></i>Assign to Analyst
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="bulkUnassign()">
+                            <i class="fas fa-user-minus me-2"></i>Unassign
+                        </a></li>
+                    </ul>
+                </div>
+                <button class="btn btn-sm btn-success" onclick="bulkResolve()" title="Mark selected alerts as resolved">
+                    <i class="fas fa-check"></i>
+                    <span class="d-none d-md-inline ms-1">Resolve</span>
+                </button>
+                <button class="btn btn-sm btn-warning" onclick="bulkEscalate()" title="Escalate selected alerts">
+                    <i class="fas fa-arrow-up"></i>
+                    <span class="d-none d-md-inline ms-1">Escalate</span>
+                </button>
+                <div class="btn-group" role="group">
+                    <button class="btn btn-sm btn-info dropdown-toggle"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false"
+                            title="More actions">
+                        <i class="fas fa-ellipsis-h"></i>
+                        <span class="d-none d-lg-inline ms-1">More</span>
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" onclick="bulkTag()">
+                            <i class="fas fa-tags me-2"></i>Add Tags
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" onclick="bulkExport()">
+                            <i class="fas fa-download me-2"></i>Export Selected
+                        </a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item text-danger" href="#" onclick="bulkClose()">
+                            <i class="fas fa-times me-2"></i>Close Selected
+                        </a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alerts Table -->
+<div class="card">
+    <div class="card-header">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Security Alerts</h5>
+            <div class="btn-group" role="group">
+                <input type="radio" class="btn-check" name="viewType" id="listView" autocomplete="off" checked>
+                <label class="btn btn-outline-primary" for="listView">
+                    <i class="fas fa-list"></i>
+                </label>
+                <input type="radio" class="btn-check" name="viewType" id="cardView" autocomplete="off">
+                <label class="btn btn-outline-primary" for="cardView">
+                    <i class="fas fa-th-large"></i>
+                </label>
+                <input type="radio" class="btn-check" name="viewType" id="timelineView" autocomplete="off">
+                <label class="btn btn-outline-primary" for="timelineView">
+                    <i class="fas fa-timeline"></i>
+                </label>
+            </div>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <!-- Enhanced List View with Improved Accessibility -->
+        <div id="listViewContainer">
+            <div class="table-responsive">
+                <table class="table table-hover security-table mb-0" id="alertsTable" role="table" aria-label="Security alerts list">
+                    <thead>
+                        <tr role="row">
+                            <th width="40" class="text-center" role="columnheader">
+                                <div class="form-check">
+                                    <input type="checkbox"
+                                           class="form-check-input"
+                                           id="selectAll"
+                                           onchange="toggleSelectAll()"
+                                           aria-label="Select all alerts">
+                                </div>
+                            </th>
+                            <th role="columnheader" class="sortable" onclick="sortTable('details')" tabindex="0"
+                                aria-label="Sort by alert details" onkeypress="handleSortKeypress(event, 'details')">
+                                <div class="d-flex align-items-center">
+                                    Alert Details
+                                    <i class="fas fa-sort ms-1 sort-icon" aria-hidden="true"></i>
+                                </div>
+                            </th>
+                            <th role="columnheader" class="sortable" onclick="sortTable('severity')" tabindex="0"
+                                aria-label="Sort by severity" onkeypress="handleSortKeypress(event, 'severity')">
+                                <div class="d-flex align-items-center">
+                                    Severity
+                                    <i class="fas fa-sort ms-1 sort-icon" aria-hidden="true"></i>
+                                </div>
+                            </th>
+                            <th role="columnheader" class="sortable" onclick="sortTable('status')" tabindex="0"
+                                aria-label="Sort by status" onkeypress="handleSortKeypress(event, 'status')">
+                                <div class="d-flex align-items-center">
+                                    Status
+                                    <i class="fas fa-sort ms-1 sort-icon" aria-hidden="true"></i>
+                                </div>
+                            </th>
+                            <th role="columnheader" class="sortable" onclick="sortTable('risk_score')" tabindex="0"
+                                aria-label="Sort by risk score" onkeypress="handleSortKeypress(event, 'risk_score')">
+                                <div class="d-flex align-items-center">
+                                    Risk Score
+                                    <i class="fas fa-sort ms-1 sort-icon" aria-hidden="true"></i>
+                                </div>
+                            </th>
+                            <th role="columnheader" class="d-none d-lg-table-cell">
+                                MITRE Techniques
+                            </th>
+                            <th role="columnheader" class="d-none d-md-table-cell">
+                                Assignee
+                            </th>
+                            <th role="columnheader" class="sortable" onclick="sortTable('created')" tabindex="0"
+                                aria-label="Sort by creation date" onkeypress="handleSortKeypress(event, 'created')">
+                                <div class="d-flex align-items-center">
+                                    <span class="d-none d-sm-inline">Created</span>
+                                    <span class="d-sm-none">Date</span>
+                                    <i class="fas fa-sort ms-1 sort-icon" aria-hidden="true"></i>
+                                </div>
+                            </th>
+                            <th role="columnheader" class="text-center" style="width: 120px;">
+                                Actions
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="alertsTableBody" role="rowgroup">
+                        <tr role="row">
+                            <td colspan="9" class="text-center py-4" role="cell">
+                                <div class="d-flex flex-column align-items-center">
+                                    <div class="spinner-border spinner-border-sm mb-2" role="status" aria-hidden="true"></div>
+                                    <span class="text-muted">Loading alerts...</span>
+                                    <span class="visually-hidden">Loading security alerts data</span>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Mobile-Optimized Alert Cards (Hidden on Desktop) -->
+            <div id="mobileAlertCards" class="d-block d-lg-none">
+                <!-- Populated dynamically for mobile view -->
+            </div>
+        </div>
+
+        <!-- Enhanced Card View with Better Grid Layout -->
+        <div id="cardViewContainer" style="display: none;">
+            <div class="container-fluid p-3">
+                <!-- Card View Controls -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <div class="btn-group" role="group" aria-label="Card layout options">
+                            <input type="radio" class="btn-check" name="cardLayout" id="cardLayoutCompact" checked>
+                            <label class="btn btn-outline-secondary btn-sm" for="cardLayoutCompact">
+                                <i class="fas fa-th"></i> Compact
+                            </label>
+                            <input type="radio" class="btn-check" name="cardLayout" id="cardLayoutDetailed">
+                            <label class="btn btn-outline-secondary btn-sm" for="cardLayoutDetailed">
+                                <i class="fas fa-list"></i> Detailed
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <select class="form-select form-select-sm d-inline-block w-auto" id="cardSortBy">
+                            <option value="severity">Sort by Severity</option>
+                            <option value="created">Sort by Date</option>
+                            <option value="risk_score">Sort by Risk Score</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div id="alertsCardContainer" class="row g-3" role="grid" aria-label="Alert cards">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Timeline View -->
+        <div id="timelineViewContainer" style="display: none;">
+            <div class="container-fluid p-3">
+                <div id="alertsTimeline" class="timeline">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Alert Detail Modal -->
+<div class="modal fade" id="alertDetailModal" tabindex="-1" aria-labelledby="alertDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="alertDetailModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Alert Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- Alert Information -->
+                    <div class="col-md-8">
+                        <div class="workspace-panel">
+                            <div class="workspace-panel-header">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Alert Information
+                            </div>
+                            <div class="workspace-panel-content">
+                                <div id="alertDetailContent">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- IOCs and Artifacts -->
+                        <div class="workspace-panel">
+                            <div class="workspace-panel-header">
+                                <i class="fas fa-search-plus me-2"></i>
+                                Indicators of Compromise (IOCs)
+                            </div>
+                            <div class="workspace-panel-content">
+                                <div id="alertIOCs">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- MITRE ATT&CK Mapping -->
+                        <div class="workspace-panel">
+                            <div class="workspace-panel-header">
+                                <i class="fas fa-crosshairs me-2"></i>
+                                MITRE ATT&CK Techniques
+                            </div>
+                            <div class="workspace-panel-content">
+                                <div id="alertMitreTechniques">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Investigation Panel -->
+                    <div class="col-md-4">
+                        <div class="workspace-panel">
+                            <div class="workspace-panel-header">
+                                <i class="fas fa-user-shield me-2"></i>
+                                Investigation Actions
+                            </div>
+                            <div class="workspace-panel-content">
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-primary" onclick="assignToMe()">
+                                        <i class="fas fa-user me-1"></i>
+                                        Assign to Me
+                                    </button>
+                                    <button class="btn btn-warning" onclick="escalateAlert()">
+                                        <i class="fas fa-arrow-up me-1"></i>
+                                        Escalate
+                                    </button>
+                                    <button class="btn btn-info" onclick="startInvestigation()">
+                                        <i class="fas fa-search me-1"></i>
+                                        Start Investigation
+                                    </button>
+                                    <button class="btn btn-success" onclick="containThreat()">
+                                        <i class="fas fa-shield-alt me-1"></i>
+                                        Contain
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="addComment()">
+                                        <i class="fas fa-comment me-1"></i>
+                                        Add Comment
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Timeline -->
+                        <div class="workspace-panel">
+                            <div class="workspace-panel-header">
+                                <i class="fas fa-clock me-2"></i>
+                                Investigation Timeline
+                            </div>
+                            <div class="workspace-panel-content">
+                                <div id="alertTimeline" class="timeline">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Related Alerts -->
+                        <div class="workspace-panel">
+                            <div class="workspace-panel-header">
+                                <i class="fas fa-link me-2"></i>
+                                Related Alerts
+                            </div>
+                            <div class="workspace-panel-content">
+                                <div id="relatedAlerts">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="saveAlertChanges()">
+                    <i class="fas fa-save me-1"></i>
+                    Save Changes
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Investigation Graph Modal -->
+<div class="modal fade" id="investigationGraphModal" tabindex="-1" aria-labelledby="investigationGraphModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="investigationGraphModalLabel">
+                    <i class="fas fa-project-diagram me-2"></i>
+                    Alert Investigation Graph
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div id="investigationGraph" class="graph-container" style="height: 100vh;">
+                    <!-- Graph visualization will be rendered here -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='/js/alerts-management.js') }}"></script>
+<script>
+// Initialize alert management when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    AlertManagement.init();
+});
+
+// View type switching
+document.querySelectorAll('input[name="viewType"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        AlertManagement.switchView(this.id);
+    });
+});
+</script>
+{% endblock %}

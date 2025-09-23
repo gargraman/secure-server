@@ -1,0 +1,488 @@
+{% extends "base.html" %}
+
+{% block title %}Incident Response - AI-SOAR Platform{% endblock %}
+
+{% block extra_css %}
+<style>
+.incident-card { transition: all 0.3s ease; }
+.incident-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.incident-timeline { max-height: 400px; overflow-y: auto; }
+.playbook-step { border-left: 3px solid #e9ecef; padding-left: 1rem; margin-bottom: 1rem; }
+.playbook-step.active { border-left-color: #0d6efd; background-color: #f8f9ff; }
+.playbook-step.completed { border-left-color: #198754; background-color: #f8fff8; }
+.severity-indicator { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 0.5rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Incident Response Header -->
+<div class="row mb-4">
+    <div class="col">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h2 mb-1">
+                    <i class="fas fa-fire me-2 text-danger"></i>
+                    Incident Response Management
+                </h1>
+                <p class="text-muted mb-0">Coordinate security incident response and recovery operations</p>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary" onclick="refreshIncidents()">
+                    <i class="fas fa-sync-alt me-1"></i>
+                    Refresh
+                </button>
+                <button class="btn btn-danger" onclick="createEmergencyIncident()">
+                    <i class="fas fa-plus me-1"></i>
+                    Emergency Incident
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Incident Response Statistics -->
+<div class="row mb-4">
+    <div class="col-xl-3 col-md-6">
+        <div class="security-card security-card-critical">
+            <div class="card-body text-center">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h3 class="text-danger mb-0" id="activeIncidents">--</h3>
+                        <p class="text-muted mb-0">Active Incidents</p>
+                        <small class="text-muted">
+                            <span id="criticalIncidents">--</span> critical
+                        </small>
+                    </div>
+                    <div class="text-danger">
+                        <i class="fas fa-fire fa-3x"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="progress" style="height: 4px;">
+                        <div class="progress-bar bg-danger" id="activeIncidentsProgress" style="width: 0%"></div>
+                    </div>
+                    <small class="text-muted mt-1">
+                        Response time: <span id="avgResponseTime">--</span>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6">
+        <div class="security-card">
+            <div class="card-body text-center">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h3 class="text-primary mb-0" id="responseTeams">--</h3>
+                        <p class="text-muted mb-0">Response Teams</p>
+                        <small class="text-muted">
+                            <span id="availableTeams">--</span> available
+                        </small>
+                    </div>
+                    <div class="text-primary">
+                        <i class="fas fa-users-cog fa-3x"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="progress" style="height: 4px;">
+                        <div class="progress-bar bg-primary" id="teamsProgress" style="width: 0%"></div>
+                    </div>
+                    <small class="text-muted mt-1">
+                        <span class="realtime-indicator realtime-active"></span>
+                        Team coordination
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6">
+        <div class="security-card">
+            <div class="card-body text-center">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h3 class="text-warning mb-0" id="activePlaybooks">--</h3>
+                        <p class="text-muted mb-0">Active Playbooks</p>
+                        <small class="text-muted">
+                            <span id="automatedSteps">--</span> automated steps
+                        </small>
+                    </div>
+                    <div class="text-warning">
+                        <i class="fas fa-book fa-3x"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="progress" style="height: 4px;">
+                        <div class="progress-bar bg-warning" id="playbooksProgress" style="width: 0%"></div>
+                    </div>
+                    <small class="text-muted mt-1">
+                        Completion rate: <span id="playbookCompletion">--</span>%
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-xl-3 col-md-6">
+        <div class="security-card">
+            <div class="card-body text-center">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h3 class="text-success mb-0" id="resolvedToday">--</h3>
+                        <p class="text-muted mb-0">Resolved Today</p>
+                        <small class="text-muted">
+                            MTTR: <span id="mttr">--</span> min
+                        </small>
+                    </div>
+                    <div class="text-success">
+                        <i class="fas fa-check-circle fa-3x"></i>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="progress" style="height: 4px;">
+                        <div class="progress-bar bg-success" id="resolutionProgress" style="width: 0%"></div>
+                    </div>
+                    <small class="text-muted mt-1">
+                        Success rate: <span id="resolutionRate">--</span>%
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Active Incidents Board -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-clipboard-list me-2"></i>
+                        Active Incidents Board
+                    </h5>
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="incidentView" id="boardView" autocomplete="off" checked>
+                        <label class="btn btn-outline-primary" for="boardView">
+                            <i class="fas fa-columns"></i> Board
+                        </label>
+                        <input type="radio" class="btn-check" name="incidentView" id="listView" autocomplete="off">
+                        <label class="btn btn-outline-primary" for="listView">
+                            <i class="fas fa-list"></i> List
+                        </label>
+                        <input type="radio" class="btn-check" name="incidentView" id="timelineView" autocomplete="off">
+                        <label class="btn btn-outline-primary" for="timelineView">
+                            <i class="fas fa-timeline"></i> Timeline
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <!-- Board View -->
+                <div id="boardViewContainer" class="p-3">
+                    <div class="row">
+                        <!-- New Incidents -->
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-header bg-secondary text-white">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-plus-circle me-1"></i>
+                                        New Incidents
+                                        <span class="badge bg-light text-dark ms-2" id="newIncidentsCount">0</span>
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2" id="newIncidentsColumn" style="min-height: 400px;">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- In Progress -->
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-header bg-primary text-white">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-cog me-1"></i>
+                                        In Progress
+                                        <span class="badge bg-light text-dark ms-2" id="inProgressCount">0</span>
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2" id="inProgressColumn" style="min-height: 400px;">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Containment -->
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-header bg-warning text-white">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-shield-alt me-1"></i>
+                                        Containment
+                                        <span class="badge bg-light text-dark ms-2" id="containmentCount">0</span>
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2" id="containmentColumn" style="min-height: 400px;">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Resolved -->
+                        <div class="col-md-3">
+                            <div class="card bg-light">
+                                <div class="card-header bg-success text-white">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-check-circle me-1"></i>
+                                        Resolved
+                                        <span class="badge bg-light text-dark ms-2" id="resolvedCount">0</span>
+                                    </h6>
+                                </div>
+                                <div class="card-body p-2" id="resolvedColumn" style="min-height: 400px;">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- List View -->
+                <div id="listViewContainer" style="display: none;">
+                    <div class="table-responsive">
+                        <table class="table table-hover security-table mb-0" id="incidentsTable">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Title</th>
+                                    <th>Severity</th>
+                                    <th>Status</th>
+                                    <th>Assignee</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="incidentsTableBody">
+                                <!-- Populated dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Timeline View -->
+                <div id="timelineViewContainer" style="display: none;" class="p-3">
+                    <div id="incidentTimeline" class="timeline">
+                        <!-- Populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Incident Detail Modal -->
+<div class="modal fade" id="incidentDetailModal" tabindex="-1" aria-labelledby="incidentDetailModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="incidentDetailModalLabel">
+                    <i class="fas fa-fire me-2"></i>
+                    Incident Response Details
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <!-- Incident Information -->
+                    <div class="col-md-8">
+                        <div class="workspace-panel mb-3">
+                            <div class="workspace-panel-header">
+                                <i class="fas fa-info-circle me-2"></i>
+                                Incident Information
+                            </div>
+                            <div class="workspace-panel-content">
+                                <div id="incidentDetailContent">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Response Playbook -->
+                        <div class="workspace-panel mb-3">
+                            <div class="workspace-panel-header">
+                                <i class="fas fa-book me-2"></i>
+                                Response Playbook
+                                <button class="btn btn-sm btn-primary ms-auto" onclick="executeAutomatedSteps()">
+                                    <i class="fas fa-play me-1"></i>
+                                    Auto-Execute
+                                </button>
+                            </div>
+                            <div class="workspace-panel-content">
+                                <div id="responsePlaybook">
+                                    <!-- Populated dynamically -->
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Communication Log -->
+                        <div class="workspace-panel">
+                            <div class="workspace-panel-header">
+                                <i class="fas fa-comments me-2"></i>
+                                Communication & Updates
+                            </div>
+                            <div class="workspace-panel-content">
+                                <div id="communicationLog" class="incident-timeline">
+                                    <!-- Populated dynamically -->
+                                </div>
+                                <div class="mt-3">
+                                    <div class="input-group">
+                                        <textarea class="form-control" id="newUpdateText" rows="3"
+                                                  placeholder="Add incident update or communication..."></textarea>
+                                        <button class="btn btn-primary" onclick="addIncidentUpdate()">
+                                            <i class="fas fa-plus"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Control Panel -->
+                    <div class="col-md-4">
+                        <!-- Status & Actions -->
+                        <div class="workspace-panel mb-3">
+                            <div class="workspace-panel-header">
+                                <i class="fas fa-cogs me-2"></i>
+                                Incident Control
+                            </div>
+                            <div class="workspace-panel-content">
+                                <div class="mb-3">
+                                    <label class="form-label">Status</label>
+                                    <select class="form-select" id="incidentStatusSelect" onchange="updateIncidentStatus()">
+                                        <option value="new">New</option>
+                                        <option value="investigating">Investigating</option>
+                                        <option value="containment">Containment</option>
+                                        <option value="eradication">Eradication</option>
+                                        <option value="recovery">Recovery</option>
+                                        <option value="resolved">Resolved</option>
+                                        <option value="closed">Closed</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Severity</label>
+                                    <select class="form-select" id="incidentSeveritySelect" onchange="updateIncidentSeverity()">
+                                        <option value="critical">Critical</option>
+                                        <option value="high">High</option>
+                                        <option value="medium">Medium</option>
+                                        <option value="low">Low</option>
+                                    </select>
+                                </div>
+                                <div class="d-grid gap-2">
+                                    <button class="btn btn-danger" onclick="escalateIncident()">
+                                        <i class="fas fa-arrow-up me-1"></i>
+                                        Escalate
+                                    </button>
+                                    <button class="btn btn-warning" onclick="activatePlaybook()">
+                                        <i class="fas fa-book me-1"></i>
+                                        Activate Playbook
+                                    </button>
+                                    <button class="btn btn-info" onclick="notifyStakeholders()">
+                                        <i class="fas fa-bullhorn me-1"></i>
+                                        Notify Stakeholders
+                                    </button>
+                                    <button class="btn btn-success" onclick="declareContainment()">
+                                        <i class="fas fa-shield-alt me-1"></i>
+                                        Declare Containment
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Response Team -->
+                        <div class="workspace-panel mb-3">
+                            <div class="workspace-panel-header">
+                                <i class="fas fa-users me-2"></i>
+                                Response Team
+                            </div>
+                            <div class="workspace-panel-content">
+                                <div id="responseTeamMembers">
+                                    <!-- Populated dynamically -->
+                                </div>
+                                <button class="btn btn-sm btn-outline-primary w-100 mt-2" onclick="addTeamMember()">
+                                    <i class="fas fa-plus me-1"></i>
+                                    Add Team Member
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Metrics -->
+                        <div class="workspace-panel">
+                            <div class="workspace-panel-header">
+                                <i class="fas fa-chart-bar me-2"></i>
+                                Response Metrics
+                            </div>
+                            <div class="workspace-panel-content">
+                                <div class="row g-2 text-center">
+                                    <div class="col-6">
+                                        <div class="border rounded p-2">
+                                            <div class="fw-bold text-primary" id="responseTime">--</div>
+                                            <small class="text-muted">Response Time</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="border rounded p-2">
+                                            <div class="fw-bold text-info" id="investigationTime">--</div>
+                                            <small class="text-muted">Investigation</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="border rounded p-2">
+                                            <div class="fw-bold text-warning" id="containmentTime">--</div>
+                                            <small class="text-muted">Containment</small>
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="border rounded p-2">
+                                            <div class="fw-bold text-success" id="recoveryTime">--</div>
+                                            <small class="text-muted">Recovery</small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="button" class="btn btn-primary" onclick="saveIncidentChanges()">
+                    <i class="fas fa-save me-1"></i>
+                    Save Changes
+                </button>
+                <button type="button" class="btn btn-info" onclick="generateIncidentReport()">
+                    <i class="fas fa-file-alt me-1"></i>
+                    Generate Report
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='/js/incidents-management.js') }}"></script>
+<script>
+// Initialize incident management when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    IncidentManagement.init();
+});
+
+// View switching
+document.querySelectorAll('input[name="incidentView"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        IncidentManagement.switchView(this.id);
+    });
+});
+</script>
+{% endblock %}

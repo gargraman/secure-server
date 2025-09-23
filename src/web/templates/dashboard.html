@@ -1,0 +1,495 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - AI-SOAR Platform{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col">
+        <h1 class="h2">
+            <i class="fas fa-tachometer-alt me-2"></i>
+            System Dashboard
+        </h1>
+        <p class="text-muted">Real-time overview of XDR alert processing and system status</p>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-outline-primary" onclick="refreshDashboard()">
+            <i class="fas fa-sync-alt me-1"></i>
+            Refresh
+        </button>
+    </div>
+</div>
+
+<!-- Enhanced Threat Overview with Improved UX -->
+<div class="row mb-4">
+    <!-- Critical Alerts Card - Enhanced with accessibility -->
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="security-card security-card-critical position-relative"
+             role="button"
+             tabindex="0"
+             aria-label="Critical alerts overview - click to view details"
+             onclick="navigateToAlerts('critical')"
+             onkeypress="handleKeyNavigation(event, 'navigateToAlerts', 'critical')">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-items-center mb-2">
+                            <h3 class="text-danger mb-0 me-2" id="criticalAlerts" aria-live="polite">--</h3>
+                            <span class="severity-badge severity-critical-pulse" aria-hidden="true">
+                                <i class="fas fa-fire"></i>
+                            </span>
+                        </div>
+                        <p class="text-muted mb-1 fw-medium">Critical Alerts</p>
+                        <div class="d-flex align-items-center gap-2">
+                            <small class="text-muted">
+                                <i class="fas fa-plus-circle me-1" aria-hidden="true"></i>
+                                <span id="newCritical" aria-live="polite">--</span> new today
+                            </small>
+                            <button class="btn btn-sm btn-outline-danger ms-auto"
+                                    onclick="event.stopPropagation(); quickCreateIncident()"
+                                    title="Quick create incident from critical alerts"
+                                    aria-label="Create incident">
+                                <i class="fas fa-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="progress" style="height: 6px;" role="progressbar"
+                         aria-label="Critical alert resolution progress">
+                        <div class="progress-bar bg-danger progress-bar-striped progress-bar-animated"
+                             id="criticalProgress" style="width: 0%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <small class="text-muted">
+                            <i class="fas fa-clock me-1" aria-hidden="true"></i>
+                            MTTR: <span id="criticalMTTR" aria-live="polite">--</span> min
+                        </small>
+                        <span class="badge bg-danger-subtle text-danger" id="criticalTrend" aria-live="polite">
+                            <i class="fas fa-arrow-up" aria-hidden="true"></i> +2%
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <!-- Hover overlay for better interaction feedback -->
+            <div class="card-hover-overlay"></div>
+        </div>
+    </div>
+
+    <!-- High Priority Incidents - Enhanced -->
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="security-card security-card-high position-relative"
+             role="button"
+             tabindex="0"
+             aria-label="High priority incidents overview - click to view details"
+             onclick="navigateToAlerts('high')"
+             onkeypress="handleKeyNavigation(event, 'navigateToAlerts', 'high')">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-items-center mb-2">
+                            <h3 class="text-warning mb-0 me-2" id="highPriorityIncidents" aria-live="polite">--</h3>
+                            <span class="severity-badge severity-high-glow" aria-hidden="true">
+                                <i class="fas fa-exclamation-triangle"></i>
+                            </span>
+                        </div>
+                        <p class="text-muted mb-1 fw-medium">High Priority Incidents</p>
+                        <div class="d-flex align-items-center gap-2">
+                            <small class="text-muted">
+                                <i class="fas fa-user-friends me-1" aria-hidden="true"></i>
+                                <span id="assignedAnalysts" aria-live="polite">--</span> analysts assigned
+                            </small>
+                            <button class="btn btn-sm btn-outline-warning ms-auto"
+                                    onclick="event.stopPropagation(); assignToMe()"
+                                    title="Assign high priority alerts to me"
+                                    aria-label="Assign to me">
+                                <i class="fas fa-user-plus"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="progress" style="height: 6px;" role="progressbar"
+                         aria-label="High priority incident resolution progress">
+                        <div class="progress-bar bg-warning progress-bar-striped"
+                             id="highProgress" style="width: 0%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <small class="text-muted">
+                            <i class="fas fa-stopwatch me-1" aria-hidden="true"></i>
+                            Avg Response: <span id="avgResponseTime" aria-live="polite">--</span>
+                        </small>
+                        <span class="badge bg-warning-subtle text-warning" id="highTrend" aria-live="polite">
+                            <i class="fas fa-arrow-down" aria-hidden="true"></i> -5%
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-hover-overlay"></div>
+        </div>
+    </div>
+
+    <!-- Active Investigations - Enhanced -->
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="security-card position-relative"
+             role="button"
+             tabindex="0"
+             aria-label="Active investigations overview - click to view workspace"
+             onclick="navigateToInvestigations()"
+             onkeypress="handleKeyNavigation(event, 'navigateToInvestigations')">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-items-center mb-2">
+                            <h3 class="text-primary mb-0 me-2" id="activeInvestigations" aria-live="polite">--</h3>
+                            <span class="severity-badge severity-investigating" aria-hidden="true">
+                                <i class="fas fa-search"></i>
+                            </span>
+                        </div>
+                        <p class="text-muted mb-1 fw-medium">Active Investigations</p>
+                        <div class="d-flex align-items-center gap-2">
+                            <small class="text-muted">
+                                <i class="fas fa-clipboard-check me-1" aria-hidden="true"></i>
+                                <span id="pendingReview" aria-live="polite">--</span> pending review
+                            </small>
+                            <button class="btn btn-sm btn-outline-primary ms-auto"
+                                    onclick="event.stopPropagation(); startThreatHunt()"
+                                    title="Start new threat hunt"
+                                    aria-label="Start threat hunt">
+                                <i class="fas fa-crosshairs"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="progress" style="height: 6px;" role="progressbar"
+                         aria-label="Investigation completion progress">
+                        <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated"
+                             id="investigationProgress" style="width: 0%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <small class="text-muted">
+                            <span class="realtime-indicator realtime-active" aria-hidden="true"></span>
+                            <span class="visually-hidden">Real-time tracking active</span>
+                            Live tracking
+                        </small>
+                        <span class="badge bg-primary-subtle text-primary" aria-live="polite">
+                            <i class="fas fa-sync-alt fa-spin" aria-hidden="true"></i> Updating
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-hover-overlay"></div>
+        </div>
+    </div>
+
+    <!-- System Health - Enhanced -->
+    <div class="col-xl-3 col-md-6 mb-3">
+        <div class="security-card position-relative"
+             role="button"
+             tabindex="0"
+             aria-label="System health overview - click to view detailed status"
+             onclick="navigateToHealth()"
+             onkeypress="handleKeyNavigation(event, 'navigateToHealth')">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-items-center mb-2">
+                            <h3 class="text-success mb-0 me-2" id="systemHealthScore" aria-live="polite">--</h3>
+                            <span class="severity-badge severity-healthy" aria-hidden="true">
+                                <i class="fas fa-shield-alt"></i>
+                            </span>
+                        </div>
+                        <p class="text-muted mb-1 fw-medium">System Health</p>
+                        <div class="d-flex align-items-center gap-2">
+                            <small class="text-muted">
+                                <i class="fas fa-server me-1" aria-hidden="true"></i>
+                                <span id="healthyServices" aria-live="polite">--</span> of <span id="totalServices" aria-live="polite">--</span> services
+                            </small>
+                            <button class="btn btn-sm btn-outline-success ms-auto"
+                                    onclick="event.stopPropagation(); refreshSystemHealth()"
+                                    title="Refresh system health check"
+                                    aria-label="Refresh health">
+                                <i class="fas fa-sync-alt"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="progress" style="height: 6px;" role="progressbar"
+                         aria-label="System health score">
+                        <div class="progress-bar bg-success"
+                             id="healthProgress" style="width: 0%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <small class="text-muted">
+                            <i class="fas fa-clock me-1" aria-hidden="true"></i>
+                            Last: <span id="lastHealthCheck" aria-live="polite">--</span>
+                        </small>
+                        <span class="badge bg-success-subtle text-success" id="healthStatus" aria-live="polite">
+                            <i class="fas fa-check-circle" aria-hidden="true"></i> Optimal
+                        </span>
+                    </div>
+                </div>
+            </div>
+            <div class="card-hover-overlay"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Security Posture Overview -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-area me-2"></i>
+                        Threat Landscape - Last 24 Hours
+                    </h5>
+                    <div class="btn-group" role="group">
+                        <input type="radio" class="btn-check" name="threatTimeframe" id="threat24h" autocomplete="off" checked>
+                        <label class="btn btn-outline-primary btn-sm" for="threat24h">24h</label>
+                        <input type="radio" class="btn-check" name="threatTimeframe" id="threat7d" autocomplete="off">
+                        <label class="btn btn-outline-primary btn-sm" for="threat7d">7d</label>
+                        <input type="radio" class="btn-check" name="threatTimeframe" id="threat30d" autocomplete="off">
+                        <label class="btn btn-outline-primary btn-sm" for="threat30d">30d</label>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                <canvas id="threatTimelineChart" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-crosshairs me-2"></i>
+                    Top MITRE Techniques
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="topMitreTechniques">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Charts Row -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    Alert Severity Distribution
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="severityChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title">
+                    <i class="fas fa-chart-bar me-2"></i>
+                    Processing Status
+                </h5>
+            </div>
+            <div class="card-body">
+                <canvas id="statusChart" width="400" height="200"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Priority Queue and System Status -->
+<div class="row">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-list-ol me-2"></i>
+                    Security Alert Priority Queue
+                </h5>
+                <div class="d-flex gap-2">
+                    <select class="form-select form-select-sm" id="alertSeverityFilter" onchange="filterRecentAlerts()">
+                        <option value="">All Severities</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                    <a href="/alerts" class="btn btn-sm btn-primary">
+                        <i class="fas fa-external-link-alt me-1"></i>
+                        View All
+                    </a>
+                </div>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover security-table mb-0">
+                        <thead>
+                            <tr>
+                                <th>Priority</th>
+                                <th>Alert</th>
+                                <th>Risk Score</th>
+                                <th>Assignee</th>
+                                <th>Age</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="priorityAlertsTable">
+                            <tr>
+                                <td colspan="6" class="text-center py-3">
+                                    <div class="spinner-border spinner-border-sm me-2" role="status"></div>
+                                    Loading priority alerts...
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <!-- Threat Intelligence Feed -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-rss me-2"></i>
+                    Threat Intelligence Feed
+                    <span class="realtime-indicator realtime-active ms-2"></span>
+                </h6>
+            </div>
+            <div class="card-body p-0" style="max-height: 200px; overflow-y: auto;">
+                <div id="threatIntelFeed">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Active Analysts -->
+        <div class="card mb-3">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-users me-2"></i>
+                    Active SOC Analysts
+                </h6>
+            </div>
+            <div class="card-body">
+                <div id="activeAnalysts">
+                    <!-- Populated dynamically -->
+                </div>
+            </div>
+        </div>
+
+        <!-- System Performance -->
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-heartbeat me-2"></i>
+                    System Performance
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <small>XDR Polling</small>
+                        <small id="xdrPollingStatus" class="text-success">Active</small>
+                    </div>
+                    <div class="progress" style="height: 4px;">
+                        <div class="progress-bar bg-success" id="xdrPollingProgress" style="width: 95%"></div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <small>AI Processing</small>
+                        <small id="aiProcessingStatus" class="text-info">Processing</small>
+                    </div>
+                    <div class="progress" style="height: 4px;">
+                        <div class="progress-bar bg-info" id="aiProcessingProgress" style="width: 78%"></div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between">
+                        <small>Graph Database</small>
+                        <small id="graphDbStatus" class="text-success">Optimal</small>
+                    </div>
+                    <div class="progress" style="height: 4px;">
+                        <div class="progress-bar bg-success" id="graphDbProgress" style="width: 92%"></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="d-flex justify-content-between">
+                        <small>MCP Services</small>
+                        <small id="mcpServicesStatus" class="text-warning">Degraded</small>
+                    </div>
+                    <div class="progress" style="height: 4px;">
+                        <div class="progress-bar bg-warning" id="mcpServicesProgress" style="width: 67%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Actions Panel -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card bg-light">
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-danger w-100" onclick="createIncident()">
+                            <i class="fas fa-fire fa-2x d-block mb-1"></i>
+                            <small>Create Incident</small>
+                        </button>
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-warning w-100" onclick="runThreatHunt()">
+                            <i class="fas fa-crosshairs fa-2x d-block mb-1"></i>
+                            <small>Threat Hunt</small>
+                        </button>
+                    </div>
+                    <div class="col-md-2">
+                        <a href="/graph" class="btn btn-outline-info w-100">
+                            <i class="fas fa-project-diagram fa-2x d-block mb-1"></i>
+                            <small>Threat Graph</small>
+                        </a>
+                    </div>
+                    <div class="col-md-2">
+                        <a href="/investigations" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-search fa-2x d-block mb-1"></i>
+                            <small>Investigate</small>
+                        </a>
+                    </div>
+                    <div class="col-md-2">
+                        <button class="btn btn-outline-success w-100" onclick="exportReport()">
+                            <i class="fas fa-download fa-2x d-block mb-1"></i>
+                            <small>Export Report</small>
+                        </button>
+                    </div>
+                    <div class="col-md-2">
+                        <a href="/compliance" class="btn btn-outline-secondary w-100">
+                            <i class="fas fa-clipboard-check fa-2x d-block mb-1"></i>
+                            <small>Compliance</small>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', path='/js/dashboard.js') }}"></script>
+{% endblock %}

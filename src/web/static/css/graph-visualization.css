@@ -1,0 +1,464 @@
+/* Graph Visualization Styles for AI-SOAR Platform */
+
+/* Graph container with accessibility features */
+.graph-container {
+    position: relative;
+    width: 100%;
+    height: 500px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    overflow: hidden;
+    /* Ensure keyboard focusability */
+    tabindex: 0;
+}
+
+.graph-container:focus {
+    outline: 3px solid #2563eb;
+    outline-offset: 2px;
+}
+
+/* ARIA live region for graph updates */
+.graph-announcements {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+}
+
+.graph-fullscreen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    background: #ffffff;
+    border: none;
+    border-radius: 0;
+}
+
+/* Graph canvas */
+.graph-canvas {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+/* Graph controls */
+.graph-controls {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    z-index: 1000;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.graph-control-btn {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 0.5rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 40px;
+    height: 40px;
+}
+
+.graph-control-btn:hover {
+    background: rgba(255, 255, 255, 1);
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.graph-control-btn i {
+    font-size: 16px;
+    color: #374151;
+}
+
+/* Graph legend */
+.graph-legend {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 1rem;
+    max-width: 300px;
+    z-index: 1000;
+}
+
+.graph-legend-title {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+    color: #374151;
+    font-size: 0.875rem;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.375rem;
+    font-size: 0.75rem;
+}
+
+.legend-color {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    margin-right: 0.5rem;
+    border: 2px solid #ffffff;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1);
+}
+
+/* Node colors based on type */
+.legend-color.node-alert { background-color: var(--graph-node-alert); }
+.legend-color.node-asset { background-color: var(--graph-node-asset); }
+.legend-color.node-user { background-color: var(--graph-node-user); }
+.legend-color.node-threat-actor { background-color: var(--graph-node-threat-actor); }
+.legend-color.node-attack { background-color: var(--mitre-execution); }
+.legend-color.node-intel { background-color: var(--threat-info); }
+
+/* Graph info panel */
+.graph-info-panel {
+    position: absolute;
+    top: 60px;
+    right: 10px;
+    width: 300px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 1rem;
+    z-index: 1000;
+    display: none;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.graph-info-panel.show {
+    display: block;
+}
+
+.info-panel-header {
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    color: #374151;
+}
+
+.info-panel-content {
+    font-size: 0.875rem;
+}
+
+.info-panel-section {
+    margin-bottom: 0.75rem;
+}
+
+.info-panel-label {
+    font-weight: 500;
+    color: #6b7280;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+}
+
+.info-panel-value {
+    color: #374151;
+}
+
+/* Graph search and filter */
+.graph-search-container {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    z-index: 1000;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.graph-search-input {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    width: 200px;
+    transition: all 0.3s ease;
+}
+
+.graph-search-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.graph-filter-dropdown {
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 0.5rem;
+    font-size: 0.875rem;
+    transition: all 0.3s ease;
+}
+
+.graph-filter-dropdown:focus {
+    outline: none;
+    border-color: #3b82f6;
+    background: rgba(255, 255, 255, 1);
+}
+
+/* Cytoscape.js custom styles */
+.cytoscape-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+/* Custom node styles applied via JavaScript */
+.cy-node-highlighted {
+    border-width: 3px !important;
+    border-color: #3b82f6 !important;
+}
+
+.cy-edge-highlighted {
+    line-color: #3b82f6 !important;
+    target-arrow-color: #3b82f6 !important;
+    width: 3px !important;
+}
+
+/* Graph statistics panel */
+.graph-stats-panel {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+    padding: 0.75rem;
+    z-index: 1000;
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+.graph-stats-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.25rem;
+}
+
+.graph-stats-item:last-child {
+    margin-bottom: 0;
+}
+
+/* Timeline graph visualization */
+.timeline-graph {
+    background: linear-gradient(to right,
+        rgba(59, 130, 246, 0.1) 0%,
+        rgba(239, 68, 68, 0.1) 100%);
+}
+
+/* Attack chain visualization */
+.attack-chain-node {
+    border: 2px solid #ef4444;
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.attack-chain-edge {
+    line-color: #ef4444;
+    target-arrow-color: #ef4444;
+    curve-style: bezier;
+    target-arrow-shape: triangle;
+}
+
+/* Threat intelligence overlay */
+.threat-intel-overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 1rem;
+    border-radius: 8px;
+    z-index: 1001;
+    display: none;
+    max-width: 400px;
+    text-align: center;
+}
+
+.threat-intel-overlay.show {
+    display: block;
+}
+
+.threat-intel-title {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.threat-intel-content {
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+/* Graph loading state */
+.graph-loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    z-index: 1002;
+}
+
+.graph-loading-spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #f3f4f6;
+    border-top: 4px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+.graph-loading-text {
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Responsive graph controls */
+@media (max-width: 768px) {
+    .graph-controls {
+        top: 5px;
+        right: 5px;
+        gap: 0.25rem;
+    }
+
+    .graph-control-btn {
+        min-width: 35px;
+        height: 35px;
+        padding: 0.375rem;
+    }
+
+    .graph-control-btn i {
+        font-size: 14px;
+    }
+
+    .graph-legend {
+        bottom: 5px;
+        left: 5px;
+        padding: 0.75rem;
+        max-width: 250px;
+    }
+
+    .graph-search-container {
+        top: 5px;
+        left: 5px;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .graph-search-input {
+        width: 180px;
+        font-size: 0.8125rem;
+        padding: 0.375rem 0.5rem;
+    }
+
+    .graph-info-panel {
+        width: 280px;
+        top: 50px;
+        right: 5px;
+        padding: 0.75rem;
+    }
+
+    .graph-stats-panel {
+        bottom: 5px;
+        right: 5px;
+        padding: 0.5rem;
+        font-size: 0.6875rem;
+    }
+}
+
+/* Dark mode graph styles */
+@media (prefers-color-scheme: dark) {
+    .graph-container {
+        background: var(--dark-bg-primary);
+        border-color: var(--dark-bg-tertiary);
+    }
+
+    .graph-control-btn {
+        background: rgba(30, 41, 59, 0.9);
+        border-color: var(--dark-bg-tertiary);
+        color: var(--dark-text-primary);
+    }
+
+    .graph-control-btn:hover {
+        background: rgba(30, 41, 59, 1);
+    }
+
+    .graph-control-btn i {
+        color: var(--dark-text-primary);
+    }
+
+    .graph-legend {
+        background: rgba(30, 41, 59, 0.95);
+        border-color: var(--dark-bg-tertiary);
+        color: var(--dark-text-primary);
+    }
+
+    .graph-legend-title {
+        color: var(--dark-text-primary);
+    }
+
+    .graph-info-panel {
+        background: rgba(30, 41, 59, 0.95);
+        border-color: var(--dark-bg-tertiary);
+        color: var(--dark-text-primary);
+    }
+
+    .info-panel-header {
+        color: var(--dark-text-primary);
+        border-color: var(--dark-bg-tertiary);
+    }
+
+    .info-panel-label {
+        color: var(--dark-text-secondary);
+    }
+
+    .info-panel-value {
+        color: var(--dark-text-primary);
+    }
+
+    .graph-search-input,
+    .graph-filter-dropdown {
+        background: rgba(30, 41, 59, 0.9);
+        border-color: var(--dark-bg-tertiary);
+        color: var(--dark-text-primary);
+    }
+
+    .graph-search-input::placeholder {
+        color: var(--dark-text-secondary);
+    }
+
+    .graph-stats-panel {
+        background: rgba(30, 41, 59, 0.95);
+        border-color: var(--dark-bg-tertiary);
+        color: var(--dark-text-secondary);
+    }
+
+    .graph-loading-text {
+        color: var(--dark-text-secondary);
+    }
+}

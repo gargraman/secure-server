@@ -1,0 +1,318 @@
+/* AI-SOAR Platform Custom Styles */
+
+:root {
+    --primary-color: #0d6efd;
+    --success-color: #198754;
+    --warning-color: #ffc107;
+    --danger-color: #dc3545;
+    --info-color: #0dcaf0;
+    --dark-color: #212529;
+    --light-color: #f8f9fa;
+}
+
+body {
+    background-color: #f5f5f5;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", "Liberation Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+}
+
+/* Navigation */
+.navbar-brand {
+    font-weight: 600;
+    font-size: 1.25rem;
+}
+
+.navbar-nav .nav-link {
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.navbar-nav .nav-link:hover {
+    color: #fff !important;
+    transform: translateY(-1px);
+}
+
+/* Main content area */
+.main-content {
+    margin-top: 76px; /* Account for fixed navbar */
+    min-height: calc(100vh - 120px);
+    padding: 20px 0;
+}
+
+/* Cards */
+.card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    transition: all 0.3s ease;
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+    background-color: #fff;
+    border-bottom: 1px solid #dee2e6;
+    font-weight: 600;
+}
+
+/* Dashboard cards */
+.card.bg-primary,
+.card.bg-success,
+.card.bg-info,
+.card.bg-warning {
+    background: linear-gradient(135deg, var(--color-start), var(--color-end)) !important;
+}
+
+.card.bg-primary {
+    --color-start: #0d6efd;
+    --color-end: #0a58ca;
+}
+
+.card.bg-success {
+    --color-start: #198754;
+    --color-end: #146c43;
+}
+
+.card.bg-info {
+    --color-start: #0dcaf0;
+    --color-end: #0aa2c0;
+}
+
+.card.bg-warning {
+    --color-start: #ffc107;
+    --color-end: #ffcd39;
+}
+
+/* Status badges */
+.badge {
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.status-active {
+    color: #198754;
+}
+
+.status-inactive {
+    color: #6c757d;
+}
+
+.status-error {
+    color: #dc3545;
+}
+
+.status-pending {
+    color: #ffc107;
+}
+
+/* Severity badges */
+.severity-critical {
+    background-color: #dc3545;
+}
+
+.severity-high {
+    background-color: #fd7e14;
+}
+
+.severity-medium {
+    background-color: #ffc107;
+    color: #000;
+}
+
+.severity-low {
+    background-color: #20c997;
+}
+
+/* Processing status */
+.processing-completed {
+    color: #198754;
+}
+
+.processing-pending {
+    color: #6c757d;
+}
+
+.processing-processing {
+    color: #0d6efd;
+}
+
+.processing-failed {
+    color: #dc3545;
+}
+
+/* Tables */
+.table th {
+    border-top: none;
+    font-weight: 600;
+    color: #495057;
+    background-color: #f8f9fa;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+/* Buttons */
+.btn {
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.btn-sm {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.75rem;
+}
+
+/* Forms */
+.form-control:focus,
+.form-select:focus {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.form-label {
+    font-weight: 600;
+    color: #495057;
+}
+
+/* Modals */
+.modal-header {
+    border-bottom: 1px solid #dee2e6;
+}
+
+.modal-title {
+    font-weight: 600;
+}
+
+/* Charts */
+canvas {
+    max-height: 300px !important;
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+}
+
+/* Loading states */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.spinner-border-sm {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* Alert components */
+.alert {
+    border: none;
+    border-radius: 0.5rem;
+}
+
+.alert-dismissible .btn-close {
+    padding: 0.75rem 1rem;
+}
+
+/* Footer */
+.footer {
+    background-color: #f8f9fa;
+    border-top: 1px solid #dee2e6;
+    margin-top: auto;
+}
+
+/* Session status indicators */
+.session-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.session-active {
+    background-color: #198754;
+    animation: pulse 2s infinite;
+}
+
+.session-error {
+    background-color: #dc3545;
+}
+
+.session-stopped {
+    background-color: #6c757d;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(25, 135, 84, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(25, 135, 84, 0);
+    }
+}
+
+/* Health indicators */
+.health-indicator {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 8px;
+}
+
+.health-healthy {
+    background-color: #198754;
+}
+
+.health-unhealthy {
+    background-color: #dc3545;
+}
+
+.health-unknown {
+    background-color: #6c757d;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .main-content {
+        padding: 10px 0;
+    }
+
+    .card-body {
+        padding: 1rem;
+    }
+
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+
+    .btn {
+        font-size: 0.875rem;
+    }
+}
+
+/* Dark mode support (future enhancement) */
+@media (prefers-color-scheme: dark) {
+    /* Dark mode styles can be added here */
+}

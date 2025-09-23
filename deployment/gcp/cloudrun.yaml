@@ -1,0 +1,167 @@
+# Google Cloud Run deployment configuration for AI-SOAR Platform
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: ai-soar-platform
+  annotations:
+    run.googleapis.com/ingress: all
+    run.googleapis.com/execution-environment: gen2
+    run.googleapis.com/cpu-throttling: "false"
+spec:
+  template:
+    metadata:
+      annotations:
+        # Allocate 2 CPUs and 4GiB memory
+        run.googleapis.com/cpu: "2"
+        run.googleapis.com/memory: "4Gi"
+        # Set max instances
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/max-scale: "10"
+        run.googleapis.com/min-scale: "1"
+        # VPC connector for Neo4j AuraDB access
+        run.googleapis.com/vpc-access-connector: projects/PROJECT_ID/locations/us-central1/connectors/aisoar-vpc-connector
+        run.googleapis.com/vpc-access-egress: private-ranges-only
+        # Cloud SQL proxy (if using legacy database)
+        run.googleapis.com/cloudsql-instances: PROJECT_ID:us-central1:aisoar-db
+    spec:
+      containerConcurrency: 100
+      timeoutSeconds: 300
+      serviceAccountName: aisoar-service-account@PROJECT_ID.iam.gserviceaccount.com
+      containers:
+      - image: gcr.io/PROJECT_ID/ai-soar-platform:latest
+        ports:
+        - containerPort: 8080
+          name: http1
+        env:
+        # Application Configuration
+        - name: ENVIRONMENT
+          value: "production"
+        - name: WEB_HOST
+          value: "0.0.0.0"
+        - name: WEB_PORT
+          value: "8080"
+        - name: DEBUG
+          value: "false"
+
+        # Google Cloud Configuration
+        - name: GOOGLE_CLOUD_PROJECT
+          value: "PROJECT_ID"
+        - name: VERTEX_AI_LOCATION
+          value: "us-central1"
+        - name: VERTEX_AI_MODEL
+          value: "gemini-1.5-pro"
+        - name: VERTEX_AI_ENABLED
+          value: "true"
+        - name: SECRET_MANAGER_ENABLED
+          value: "true"
+
+        # Neo4j Configuration (from Secret Manager)
+        - name: NEO4J_URI
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-uri
+              key: latest
+        - name: NEO4J_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-username
+              key: latest
+        - name: NEO4J_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-password
+              key: latest
+        - name: NEO4J_DATABASE
+          value: "neo4j"
+        - name: NEO4J_ENCRYPTED
+          value: "true"
+
+        # XDR Configuration
+        - name: DEFAULT_POLL_INTERVAL
+          value: "30"
+        - name: MAX_ALERTS_PER_POLL
+          value: "100"
+
+        # MCP Server Configuration
+        - name: MCP_SERVER_TIMEOUT
+          value: "30"
+        - name: MCP_SERVER_RETRIES
+          value: "3"
+        - name: ENABLED_MCP_SERVERS
+          value: "virustotal,servicenow,cyberreason,cloud_ivx"
+
+        # Logging
+        - name: LOG_LEVEL
+          value: "INFO"
+
+        # Security
+        - name: CORS_ORIGINS
+          value: "https://YOUR_DOMAIN.com"
+        - name: ALLOWED_HOSTS
+          value: "YOUR_DOMAIN.com,*.run.app"
+
+        # External API Keys (from Secret Manager)
+        - name: VIRUSTOTAL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: virustotal-api-key
+              key: latest
+        - name: SERVICENOW_AUTH
+          valueFrom:
+            secretKeyRef:
+              name: servicenow-auth
+              key: latest
+        - name: CYBERREASON_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: cyberreason-token
+              key: latest
+        - name: TRELLIX_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: trellix-api-key
+              key: latest
+
+        # Monitoring
+        - name: METRICS_ENABLED
+          value: "true"
+        - name: HEALTH_CHECK_INTERVAL
+          value: "60"
+
+        # Resource limits
+        resources:
+          limits:
+            cpu: 2000m
+            memory: 4Gi
+          requests:
+            cpu: 1000m
+            memory: 2Gi
+
+        # Health checks
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+
+        readinessProbe:
+          httpGet:
+            path: /api/health/ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+        # Startup probe
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 10
+          failureThreshold: 10

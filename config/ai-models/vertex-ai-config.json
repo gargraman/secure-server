@@ -1,0 +1,58 @@
+{
+  "project_id": "svc-hackathon-prod07",
+  "location": "us-central1",
+  "models": {
+    "gemini": {
+      "model_name": "gemini-1.5-pro",
+      "endpoint": "us-central1-aiplatform.googleapis.com",
+      "parameters": {
+        "max_output_tokens": 2000,
+        "temperature": 0.1,
+        "top_p": 0.8,
+        "top_k": 40
+      },
+      "safety_settings": [
+        {
+          "category": "HARM_CATEGORY_HARASSMENT",
+          "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+        },
+        {
+          "category": "HARM_CATEGORY_HATE_SPEECH",
+          "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+        },
+        {
+          "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+          "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+        },
+        {
+          "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+          "threshold": "BLOCK_MEDIUM_AND_ABOVE"
+        }
+      ]
+    },
+    "claude": {
+      "model_name": "claude-3-5-sonnet@20241022",
+      "endpoint": "us-central1-aiplatform.googleapis.com",
+      "parameters": {
+        "max_tokens": 2000,
+        "temperature": 0.1
+      }
+    }
+  },
+  "quotas": {
+    "requests_per_minute": 1000,
+    "tokens_per_minute": 100000,
+    "concurrent_requests": 10
+  },
+  "retry_config": {
+    "max_retries": 3,
+    "backoff_factor": 2,
+    "max_delay": 60
+  },
+  "monitoring": {
+    "enable_logging": true,
+    "log_requests": true,
+    "log_responses": false,
+    "metrics_enabled": true
+  }
+}

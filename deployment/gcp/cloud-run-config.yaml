@@ -1,0 +1,186 @@
+# Google Cloud Run Service Configuration for AI-SOAR Platform
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: ai-soar-platform
+  annotations:
+    # Cloud Run specific annotations
+    run.googleapis.com/ingress: all
+    run.googleapis.com/execution-environment: gen2
+    run.googleapis.com/cpu-throttling: "true"
+    # Security annotations
+    run.googleapis.com/custom-audiences: ""
+    # Network annotations for VPC connectivity
+    run.googleapis.com/vpc-access-connector: aisoar-vpc-connector
+    run.googleapis.com/vpc-access-egress: private-ranges-only
+    # Load Balancer annotations
+    run.googleapis.com/load-balancer-type: "External"
+spec:
+  template:
+    metadata:
+      annotations:
+        # Scaling configuration
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "10"
+        # Instance configuration
+        run.googleapis.com/memory: "4Gi"
+        run.googleapis.com/cpu: "2"
+        run.googleapis.com/max-instances: "10"
+        run.googleapis.com/min-instances: "1"
+        # Security configuration
+        run.googleapis.com/execution-environment: gen2
+        run.googleapis.com/sandbox: gvisor
+        # Session affinity for WebSockets
+        run.googleapis.com/sessionAffinity: "true"
+    spec:
+      serviceAccountName: aisoar-service-account@PROJECT_ID.iam.gserviceaccount.com
+      containerConcurrency: 100
+      timeoutSeconds: 300
+      containers:
+      - name: ai-soar-platform
+        image: gcr.io/PROJECT_ID/ai-soar-platform:latest
+        ports:
+        - name: http1
+          containerPort: 8080
+          protocol: TCP
+        env:
+        # Application configuration
+        - name: ENVIRONMENT
+          value: "production"
+        - name: GOOGLE_CLOUD_PROJECT
+          value: "PROJECT_ID"
+        - name: VERTEX_AI_LOCATION
+          value: "us-central1"
+        - name: VERTEX_AI_ENABLED
+          value: "true"
+        - name: SECRET_MANAGER_ENABLED
+          value: "true"
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: METRICS_ENABLED
+          value: "true"
+        # Database configuration
+        - name: NEO4J_URI
+          value: "neo4j+s://your-auradb-instance.databases.neo4j.io"
+        - name: NEO4J_USER
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-credentials
+              key: username
+        - name: NEO4J_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: neo4j-credentials
+              key: password
+        # WebSocket configuration
+        - name: WEBSOCKET_ENABLED
+          value: "true"
+        - name: WEBSOCKET_TIMEOUT
+          value: "300"
+        # Static file serving configuration
+        - name: STATIC_FILES_ENABLED
+          value: "true"
+        - name: STATIC_CACHE_MAX_AGE
+          value: "3600"
+        # Health check configuration
+        startupProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          timeoutSeconds: 10
+          periodSeconds: 30
+          failureThreshold: 3
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          timeoutSeconds: 10
+          periodSeconds: 30
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /readiness
+            port: 8080
+          initialDelaySeconds: 10
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 3
+        resources:
+          limits:
+            cpu: "2"
+            memory: "4Gi"
+          requests:
+            cpu: "1"
+            memory: "2Gi"
+        # Volume mounts for configuration
+        volumeMounts:
+        - name: config-volume
+          mountPath: /app/config
+          readOnly: true
+      volumes:
+      - name: config-volume
+        secret:
+          secretName: aisoar-config
+  traffic:
+  - percent: 100
+    latestRevision: true
+---
+# Load Balancer Configuration for Static Files
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aisoar-static-config
+data:
+  nginx.conf: |
+    events {
+        worker_connections 1024;
+    }
+    http {
+        include /etc/nginx/mime.types;
+        default_type application/octet-stream;
+
+        # Upstream for AI-SOAR Platform
+        upstream aisoar_backend {
+            server ai-soar-platform.a.run.app:443;
+        }
+
+        server {
+            listen 8080;
+            server_name _;
+
+            # Static files with CDN caching
+            location /static/ {
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+                add_header Access-Control-Allow-Origin "*";
+                proxy_pass https://aisoar_backend;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            # WebSocket proxying
+            location /ws {
+                proxy_pass https://aisoar_backend;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade $http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+
+            # All other requests
+            location / {
+                proxy_pass https://aisoar_backend;
+                proxy_set_header Host $http_host;
+                proxy_set_header X-Real-IP $remote_addr;
+                proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto $scheme;
+            }
+        }
+    }

@@ -1,0 +1,116 @@
+# Google Cloud Build configuration for AI-SOAR Platform
+steps:
+# Build the Docker image
+- name: 'gcr.io/cloud-builders/docker'
+  args: [
+    'build',
+    '--target', 'production',
+    '-t', 'gcr.io/$PROJECT_ID/ai-soar-platform:$COMMIT_SHA',
+    '-t', 'gcr.io/$PROJECT_ID/ai-soar-platform:latest',
+    '-f', 'deployment/Dockerfile',
+    '.'
+  ]
+
+# Push the Docker image to Google Container Registry
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/ai-soar-platform:$COMMIT_SHA']
+
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/$PROJECT_ID/ai-soar-platform:latest']
+
+# Run security scan (optional)
+- name: 'gcr.io/cloud-builders/gcloud'
+  args: [
+    'beta', 'container', 'images', 'scan',
+    'gcr.io/$PROJECT_ID/ai-soar-platform:$COMMIT_SHA',
+    '--format=json'
+  ]
+
+# Deploy to Cloud Run
+- name: 'gcr.io/cloud-builders/gcloud'
+  args: [
+    'run', 'deploy', 'ai-soar-platform',
+    '--image', 'gcr.io/$PROJECT_ID/ai-soar-platform:$COMMIT_SHA',
+    '--region', 'us-central1',
+    '--platform', 'managed',
+    '--allow-unauthenticated',
+    '--memory', '4Gi',
+    '--cpu', '2',
+    '--max-instances', '10',
+    '--min-instances', '1',
+    '--port', '8080',
+    '--timeout', '300s',
+    '--concurrency', '100',
+    '--execution-environment', 'gen2',
+    '--service-account', 'aisoar-service-account@$PROJECT_ID.iam.gserviceaccount.com',
+    '--vpc-connector', 'aisoar-vpc-connector',
+    '--vpc-egress', 'private-ranges-only',
+    '--set-env-vars',
+    'ENVIRONMENT=production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,VERTEX_AI_LOCATION=us-central1,VERTEX_AI_ENABLED=true,SECRET_MANAGER_ENABLED=true,LOG_LEVEL=INFO,METRICS_ENABLED=true,WEBSOCKET_ENABLED=true,STATIC_FILES_ENABLED=true'
+  ]
+
+# Update traffic to new revision (blue-green deployment)
+- name: 'gcr.io/cloud-builders/gcloud'
+  args: [
+    'run', 'services', 'update-traffic', 'ai-soar-platform',
+    '--to-latest',
+    '--region', 'us-central1'
+  ]
+
+# Run post-deployment health check
+- name: 'gcr.io/cloud-builders/curl'
+  args: [
+    '-f',
+    '--retry', '5',
+    '--retry-delay', '10',
+    'https://ai-soar-platform-$PROJECT_ID.a.run.app/health'
+  ]
+
+# Create Cloud Run MCP Services (optional - for separate MCP server deployment)
+- name: 'gcr.io/cloud-builders/gcloud'
+  args: [
+    'run', 'deploy', 'ai-soar-mcp-servers',
+    '--image', 'gcr.io/$PROJECT_ID/ai-soar-platform:$COMMIT_SHA',
+    '--region', 'us-central1',
+    '--platform', 'managed',
+    '--no-allow-unauthenticated',
+    '--memory', '2Gi',
+    '--cpu', '1',
+    '--max-instances', '5',
+    '--min-instances', '1',
+    '--port', '8001',
+    '--timeout', '300s',
+    '--service-account', 'aisoar-service-account@$PROJECT_ID.iam.gserviceaccount.com',
+    '--vpc-connector', 'aisoar-vpc-connector',
+    '--vpc-egress', 'private-ranges-only',
+    '--command', 'python,start_servers.py',
+    '--set-env-vars',
+    'ENVIRONMENT=production,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,MCP_SERVER_MODE=true'
+  ]
+
+# Substitute variables
+substitutions:
+  _DEPLOY_REGION: us-central1
+  _SERVICE_NAME: ai-soar-platform
+
+# Build configuration options
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: 'E2_HIGHCPU_8'
+  substitutionOption: 'ALLOW_LOOSE'
+
+# Build timeout
+timeout: '1200s'
+
+# Build images to be stored
+images:
+- 'gcr.io/$PROJECT_ID/ai-soar-platform:$COMMIT_SHA'
+- 'gcr.io/$PROJECT_ID/ai-soar-platform:latest'
+
+# Artifacts to be stored
+artifacts:
+  objects:
+    location: 'gs://$PROJECT_ID-build-artifacts'
+    paths:
+    - 'deployment/gcp/*'
+    - 'config/*'

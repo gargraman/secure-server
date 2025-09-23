@@ -1,0 +1,61 @@
+{
+  "mcp_servers": {
+    "virustotal": {
+      "base_url": "http://0.0.0.0:8001",
+      "capabilities": ["ip_report", "domain_report"],
+      "auth_headers": {
+        "X-API-Key": "your-virustotal-api-key"
+      }
+    },
+    "servicenow": {
+      "base_url": "http://0.0.0.0:8002",
+      "capabilities": ["create_record", "get_record"],
+      "auth_headers": {
+        "Authorization": "Basic your-servicenow-auth"
+      }
+    },
+    "cyberreason": {
+      "base_url": "http://0.0.0.0:8003",
+      "capabilities": ["get_pylum_id", "check_terminal_status"],
+      "auth_headers": {
+        "Authorization": "Bearer your-cyberreason-token"
+      }
+    },
+    "custom_rest": {
+      "base_url": "http://0.0.0.0:8004",
+      "capabilities": ["custom_enrichment"],
+      "auth_headers": {}
+    }
+  },
+  "kafka_config": {
+    "bootstrap_servers": ["localhost:9092"],
+    "security_protocol": "PLAINTEXT",
+    "auto_offset_reset": "latest"
+  },
+  "ai_config": {
+    "provider": "google_vertex_gemini",
+    "aws_bedrock": {
+      "model": "anthropic.claude-3-5-sonnet-20241022-v2:0",
+      "region": "us-east-1",
+      "max_tokens": 2000,
+      "temperature": 0.1
+    },
+    "google_vertex": {
+      "model": "claude-3-5-sonnet@20241022",
+      "project_id": "your-gcp-project-id",
+      "location": "us-central1",
+      "max_tokens": 2000,
+      "temperature": 0.1
+    },
+    "google_vertex_gemini": {
+      "model": "gemini-1.5-pro",
+      "project_id": "your-gcp-project-id",
+      "location": "us-central1",
+      "max_tokens": 2000,
+      "temperature": 0.1,
+      "top_p": 0.8,
+      "top_k": 40
+    },
+    "fallback_to_rules": true
+  }
+}

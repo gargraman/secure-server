@@ -1,0 +1,161 @@
+# Development Docker Compose for AI-SOAR Platform
+# Complete development environment with all required services
+
+services:
+  # Neo4j Graph Database (Development)
+  neo4j-db:
+    image: neo4j:community
+    container_name: aisoar-neo4j-dev
+    environment:
+      - NEO4J_AUTH=neo4j/devpassword123
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_apoc_export_file_enabled=true
+      - NEO4J_apoc_import_file_enabled=true
+      - NEO4J_ACCEPT_LICENSE_AGREEMENT=yes
+      - NEO4J_server_memory_heap_initial__size=512m
+      - NEO4J_server_memory_heap_max__size=2g
+    ports:
+      - "7474:7474"  # HTTP
+      - "7687:7687"  # Bolt
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+      - neo4j-import:/var/lib/neo4j/import
+      - neo4j-plugins:/plugins
+    networks:
+      - ai-soar-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "devpassword123", "RETURN 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  # Redis Cache (Development)
+  redis:
+    image: redis:7-alpine
+    container_name: aisoar-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - ai-soar-network
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # AI-SOAR Web Application
+  web-app:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+      target: web-app
+    container_name: aisoar-web-dev
+    env_file:
+      - .env.development
+    ports:
+      - "8080:8080"
+    volumes:
+      - ../logs:/app/logs
+      - ../data:/app/data
+      - ../src:/app/src:ro  # Read-only source mount for development
+    depends_on:
+      neo4j-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ai-soar-network
+    restart: unless-stopped
+    command: ["python", "-m", "uvicorn", "src.web.app:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # MCP Servers (Development)
+  mcp-servers:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+      target: mcp-servers
+    container_name: aisoar-mcp-dev
+    env_file:
+      - .env.development
+    ports:
+      - "8001:8001"  # VirusTotal
+      - "8002:8002"  # ServiceNow
+      - "8003:8003"  # CyberReason
+      - "8004:8004"  # Custom REST
+      - "8005:8005"  # Cloud IVX
+    volumes:
+      - ../logs:/app/logs
+      - ../data:/app/data
+      - ../src:/app/src:ro
+    depends_on:
+      neo4j-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ai-soar-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+    # XDR Poller Service
+  xdr-poller:
+    build:
+      context: ..
+      dockerfile: deployment/Dockerfile
+      target: production
+    container_name: aisoar-xdr-poller-dev
+    env_file:
+      - .env.development
+    environment:
+      - XDR_BASE_URL=https://staging.apps.fireeye.com/alert/id/hexload02org01
+      - XDR_AUTH_TOKEN=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6ImJmYzg2ODU1ZWRkZTQyNzc5YjE3YjUyNTNiOGQyY2Y3Y2ZiZDgzN2ZmYmRlZjM2M2I2YzBiYjYxNDcxZTI5NTAifQ.eyJ0b2tlbl90eXBlIjoiYXBpLWtleSIsInN1YiI6IjQ2ODk1MWU5LWYwMjMtNDNkNi04MWY4LTVmZjlkN2E5ZWRkMSIsIm9yZyI6ImI5NzQxYjdiLTQzZmYtNGQzYy04ZDhhLWQ0NWI1NDhmNjgxMyIsImlkcyI6IjgzMjJhNjE1LTA1Y2ItNGUzYi1iODhjLTI3YjY1NTQwYTU4NiA1YWJiMmZhZC1iYThjLTQyNGUtOWY0My1hMjAwNGNlOWQ3NWYiLCJqdGkiOiIyYjg3NWE5NC01OTZiLTRkODAtYWMzMy0wNzdiZWQyZjUxYzUiLCJpc3MiOiJodHRwczovL2lkcC1pYW0tc3RnLmZpcmVleWUuY29tIiwiaWF0IjoxNzU2OTY3NDc1LCJleHAiOjE3NzMzODM0NzV9.aXiA7gDNsY7hKHIxEfjWl0WJ67S5D7DotKA-zfLzQOQbEibiBRVzQkUlq2S7Dq-UwNwF4E04pX3HsZy_Gf-n3RUL8MnWYk22Iyb0nDvhNwh3BLzE-d4ncrMk-r9JuYL6iRiGYtAr6YNB_kgw7yUB5-tnq-Ly8LEORbbTRNg9xsh3aJF2qaPxVXhtinyBAuvK5UvuDb77z8GKvl1nJ39Ea7U3dk5I3emaG6zv5KKI-vF1OIkM0EtrXezUPZK8K0mEWe8G2-8vQJrZl0DVKXsjJ8UbelbVS2taf3RCxz2EsgoXDDkxeXNriEym4nB_D7KSYvi_PfQGnIqsnUjF6oFQbA
+      - XDR_TIMEOUT=30
+      - XDR_MAX_RETRIES=3
+      - XDR_POLL_INTERVAL=60
+      - XDR_POLL_ENABLED=true
+    volumes:
+      - ../logs:/app/logs
+      - ../data:/app/data
+      - ../src:/app/src:ro
+      - ../alerts:/app/alerts
+    depends_on:
+      neo4j-db:
+        condition: service_healthy
+      web-app:
+        condition: service_healthy
+    networks:
+      - ai-soar-network
+    restart: unless-stopped
+    command: ["python", "xdr_poller.py", "--interval", "60", "--debug"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  neo4j-data:
+  neo4j-logs:
+  neo4j-import:
+  neo4j-plugins:
+  redis-data:
+  redpanda-data:
+
+networks:
+  ai-soar-network:
+    driver: bridge
