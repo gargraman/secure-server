@@ -275,16 +275,16 @@ asyncio.run(test_services())
 # MATCH (alert:Alert)-[:AFFECTS]->(asset:Asset) WHERE asset.criticality >= 4 RETURN alert, asset
 
 # Enhanced XDR poller modes with unified components:
-# Enhanced mode (comprehensive data collection with Neo4j population)
+# Enhanced mode (comprehensive data collection with Neo4j-first storage)
 python xdr_poller.py --interval 30
 
-# Basic mode (fallback, file storage only)
+# Basic mode (fallback, minimal Neo4j storage when enhanced services unavailable)
 python xdr_poller.py --basic-mode
 
-# Debug mode with enhanced logging and component statistics
+# Debug mode with enhanced logging and Neo4j population statistics
 python xdr_poller.py --debug --interval 60
 
-# Test unified components integration
+# Test unified components integration with Neo4j storage
 python -c "
 from src.processors.unified_alert_processor import UnifiedAlertProcessor
 from src.extractors.xdr_data_extractor import XDRDataExtractor
@@ -295,11 +295,79 @@ async def test_components():
     coordinator = await get_service_coordinator()
     extractor = XDRDataExtractor()
     resource_manager = ResourceManager()
-    processor = UnifiedAlertProcessor(coordinator, ['graph', 'file'], extractor)
+    processor = UnifiedAlertProcessor(coordinator, ['graph'], extractor)  # Neo4j-first approach
     health = await processor.health_check()
     print(f'Unified components health: {health}')
 asyncio.run(test_components())
 "
+```
+
+### Debugging and Troubleshooting
+
+#### Common Development Issues
+
+**Service Coordinator Property Error**:
+The current service coordinator implementation uses async properties which is a Python anti-pattern:
+```python
+# CURRENT ISSUE: This pattern may not work as expected
+coordinator = await get_service_coordinator()
+xdr_service = await coordinator.xdr_config  # May fail - can't await property
+
+# WORKAROUND until fixed:
+coordinator = await get_service_coordinator()
+# Access private attributes after coordinator initialization:
+xdr_service = coordinator._xdr_config_service  # Direct access
+```
+
+**XDR Poller Connection Issues**:
+```bash
+# Test XDR poller with enhanced debugging
+python xdr_poller.py --debug --interval 60
+
+# Check service initialization with error handling
+python -c "
+import asyncio
+from src.services.service_coordinator import get_service_coordinator
+async def test():
+    try:
+        coordinator = await get_service_coordinator()
+        print('✓ Service coordinator initialized')
+    except Exception as e:
+        print(f'✗ Service coordinator error: {e}')
+        import traceback
+        traceback.print_exc()
+asyncio.run(test())
+"
+```
+
+**Neo4j Connection Debugging**:
+```bash
+# Test Neo4j connection with detailed health check
+python -c "
+import asyncio
+from src.database.connection import get_database_manager
+async def test():
+    try:
+        db = await get_database_manager()
+        health = await db.health_check()
+        print(f'Database health: {health}')
+        print(f'Active sessions: {db._active_sessions}/{db._max_active_sessions}')
+    except Exception as e:
+        print(f'Database connection failed: {e}')
+        print('This is expected if Neo4j is not running locally')
+asyncio.run(test())
+"
+```
+
+**Frontend API Routing Issues**:
+```bash
+# Test API endpoints directly
+curl -i http://localhost:8080/api/security/threat-level  # Should return 200
+curl -i http://localhost:8080/api/health/detailed        # Should return health status
+
+# Common routing fix - ensure JavaScript uses correct API paths
+# API_BASE_URL = '/api' in common.js combines with endpoint paths
+# /security/threat-level becomes /api/security/threat-level
 ```
 
 #### Testing and Development
@@ -980,17 +1048,108 @@ if len(processed_alert_ids) > MAX_PROCESSED_ALERTS:
     processed_alert_ids = set(old_ids[MAX_PROCESSED_ALERTS//2:])  # ❌ MANUAL
 ```
 
+### Recent Fixes and Critical Patterns
+
+#### Async Task Safety (Fixed in Latest Version)
+The XDR poller now uses safe async task handling:
+
+```python
+# CORRECT: Safe async task creation with error handling
+async def handle_alerts_safely(alerts: List[Dict]) -> None:
+    try:
+        await process_alerts_comprehensive(alerts)
+    except Exception as e:
+        logger.error(f"Alert processing error: {e}")
+
+# In sync context:
+asyncio.create_task(handle_alerts_safely(alerts))
+
+# WRONG: Fire-and-forget pattern (fixed)
+asyncio.create_task(process_alerts_comprehensive(alerts))  # No error handling
+```
+
+#### Neo4j Async Context Manager Fix (CRITICAL)
+The Neo4j connection manager was fixed to properly support async context managers:
+
+```python
+# CORRECT: Fixed implementation in database/connection.py
+@asynccontextmanager
+async def get_session(self) -> AsyncGenerator[AsyncSession, None]:
+    # Proper async context manager with @asynccontextmanager decorator
+
+# Usage (now works correctly):
+async with db_manager.get_session() as session:
+    result = await session.run("MATCH (n) RETURN n LIMIT 10")
+```
+
+#### Resource Management Pattern (Required)
+```python
+# CORRECT: Use ResourceManager for memory management and deduplication
+resource_manager = ResourceManager(max_processed_alerts=10000)
+if resource_manager.track_processed_alert(alert_id):
+    # Process new alert - automatic deduplication and LRU cache cleanup
+    await unified_processor.process_alerts([alert])
+
+# Get memory usage statistics
+stats = resource_manager.get_stats()
+logger.info(f"Resource manager stats: {stats}")
+```
+
+#### Enhanced Neo4j Population Service Pattern
+```python
+# CORRECT: Use write transactions for atomicity
+async def populate_comprehensive_alert_data(self, enhanced_alert_data: Dict[str, Any]) -> Alert:
+    async with db_manager.get_session() as session:
+        async def _populate_transaction(tx):
+            # All database operations in transaction function
+            return await self._create_enhanced_alert_node(enhanced_alert_data, tx)
+
+        # Execute in write transaction for proper atomicity
+        alert = await session.execute_write(_populate_transaction)
+        return alert
+```
+
+#### Frontend API Response Structure Fix (Recent)
+The JavaScript code was updated to match the actual API response format:
+
+```javascript
+// CORRECT: Updated to match API response structure
+const threatData = await Utils.apiRequest('/security/threat-level');
+const level = threatData.threat_level.current_level.toLowerCase();
+const levelText = threatData.threat_level.current_level;
+
+// WRONG: Old pattern expecting different structure (fixed)
+const level = threatData.level.toLowerCase();  // ❌ API doesn't return .level
+```
+
+**API Response Format**:
+```json
+{
+  "timestamp": "2025-09-24T15:59:37.156077",
+  "threat_level": {
+    "current_level": "moderate",
+    "score": 6.2,
+    "trend": "increasing",
+    "indicators": {"high": 12, "medium": 28, "low": 45},
+    "last_updated": "2025-09-24T15:59:37.156082"
+  }
+}
+```
+
 ### Testing Commands
 
 ```bash
-# Test service coordinator integration
+# Test service coordinator integration (with error handling)
 python -c "
 from src.services.service_coordinator import get_service_coordinator
 import asyncio
 async def test():
-    coordinator = await get_service_coordinator()
-    alert_service = await coordinator.alert_processing
-    print('Service integration: OK')
+    try:
+        coordinator = await get_service_coordinator()
+        # Note: async property pattern may need fixing
+        print('✓ Service coordinator initialized')
+    except Exception as e:
+        print(f'✗ Service error: {e}')
 asyncio.run(test())
 "
 
@@ -1110,3 +1269,51 @@ The platform has comprehensive test coverage:
 - `test_enhanced_poller.py` - XDR polling service tests
 - `test_neo4j_refactor.py` - Service refactoring validation
 - `test_xdr_client.py` - XDR API client tests
+
+## Current Codebase Status and Compatibility
+
+### Known Issues and Workarounds
+
+#### Service Coordinator Async Property Pattern
+**Status**: Active issue requiring attention
+**Impact**: Service initialization in XDR poller and web application
+**Workaround**:
+```python
+# Current problematic pattern:
+coordinator = await get_service_coordinator()
+service = await coordinator.xdr_config  # May not work - async property issue
+
+# Temporary workaround:
+coordinator = await get_service_coordinator()
+service = coordinator._xdr_config_service  # Direct access after initialization
+```
+
+#### Template and Static File Path Resolution
+The web application uses robust fallback path resolution for deployment flexibility:
+```python
+# Primary paths (development)
+static_dir = "src/web/static/"
+templates_dir = "src/web/templates/"
+
+# Docker fallback paths
+static_dir = "/app/src/web/static/"
+templates_dir = "/app/src/web/templates/"
+
+# Final fallback
+static_dir = "static/"
+templates_dir = "templates/"
+```
+
+#### Database Integration Resilience
+Neo4j integration includes graceful degradation:
+- Mock data served when database unavailable
+- Connection pooling with automatic retry
+- Health checks with detailed error reporting
+- Development mode supports dummy credentials
+
+### Development Environment Requirements
+- **Python**: 3.8+ with asyncio support
+- **Neo4j**: 4.4+ (local) or AuraDB (production)
+- **Node.js**: Not required (frontend uses CDN resources)
+- **Docker**: Optional but recommended for full stack testing
+- **Google Cloud**: Optional for Vertex AI integration

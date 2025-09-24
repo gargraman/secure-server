@@ -12,10 +12,8 @@ Created: 2025-09-22 - Enhanced Neo4j Database Population
 """
 
 import logging
-import re
-from dataclasses import asdict
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional
 
 from neo4j import AsyncSession
 from neo4j.exceptions import Neo4jError
@@ -28,15 +26,18 @@ from ..core.security import audit_log, sanitize_cypher_input
 from ..database.connection import Neo4jDatabaseManager, get_database_manager
 from ..database.models import (Alert, AlertClassification, Asset, Attack,
                                BusinessImpact, EscalationLevel, Event,
-                               IntelContext, Note, ProcessingStatus,
-                               Relationship, ResponseSLA, ThreatActor, User,
+                               IntelContext, ProcessingStatus, Relationship,
+                               ResponseSLA, ThreatActor,
                                WorkflowClassification,
                                calculate_composite_risk_score,
-                               create_node_query, create_relationship_query,
+                               convert_risk_to_numeric,
+                               convert_severity_to_numeric, create_node_query,
                                determine_classification,
                                determine_escalation_level,
                                determine_response_sla,
-                               determine_workflow_classification)
+                               determine_workflow_classification,
+                               normalize_attacks_field,
+                               normalize_recommended_actions)
 
 logger = logging.getLogger(__name__)
 
@@ -96,71 +97,90 @@ class EnhancedNeo4jPopulationService:
         """
         try:
             db_manager = await self.get_db_manager()
+            logger.debug(f"Got database manager of type: {type(db_manager)}")
 
+            # Use write transaction for better atomicity
             async with db_manager.get_session() as session:
-                # Start transaction for atomicity
-                async with session.begin_transaction() as tx:
-                    # 1. Create main alert node with enhanced analysis
-                    alert = await self._create_enhanced_alert_node(
-                        enhanced_alert_data, tx
-                    )
+                try:
+                    # Use write transaction for atomicity
+                    async def _populate_transaction(tx):
+                        # 1. Create main alert node with enhanced analysis
+                        alert = await self._create_enhanced_alert_node(
+                            enhanced_alert_data, tx
+                        )
 
-                    # 2. Create and link asset nodes
-                    assets = await self._create_asset_nodes(
-                        enhanced_alert_data, alert, tx
-                    )
+                        # 2. Create and link asset nodes
+                        assets = await self._create_asset_nodes(
+                            enhanced_alert_data, alert, tx
+                        )
 
-                    # 3. Create and link event nodes
-                    events = await self._create_event_nodes(
-                        enhanced_alert_data, alert, tx
-                    )
+                        # 3. Create and link event nodes
+                        events = await self._create_event_nodes(
+                            enhanced_alert_data, alert, tx
+                        )
 
-                    # 4. Create and link MITRE ATT&CK technique nodes
-                    attacks = await self._create_attack_nodes(
-                        enhanced_alert_data, alert, tx
-                    )
+                        # 4. Create and link MITRE ATT&CK technique nodes
+                        attacks = await self._create_attack_nodes(
+                            enhanced_alert_data, alert, tx
+                        )
 
-                    # 5. Create and link threat intelligence nodes
-                    intel_contexts = await self._create_intel_context_nodes(
-                        enhanced_alert_data, alert, tx
-                    )
+                        # 5. Create and link threat intelligence nodes
+                        intel_contexts = await self._create_intel_context_nodes(
+                            enhanced_alert_data, alert, tx
+                        )
 
-                    # 6. Create and link IOCs and artifacts
-                    await self._create_ioc_relationships(
-                        enhanced_alert_data, alert, events, tx
-                    )
+                        # 6. Create and link IOCs and artifacts
+                        await self._create_ioc_relationships(
+                            enhanced_alert_data, alert, events, tx
+                        )
 
-                    # 7. Create correlation relationships with other alerts
-                    await self._create_correlation_relationships(alert, tx)
+                        # 7. Create correlation relationships with other alerts
+                        await self._create_correlation_relationships(alert, tx)
 
-                    # 8. Create threat actor attribution if available
-                    await self._create_threat_actor_relationships(
-                        alert, intel_contexts, tx
-                    )
+                        # 8. Create threat actor attribution if available
+                        await self._create_threat_actor_relationships(
+                            alert, intel_contexts, tx
+                        )
 
-                    # 9. Apply security classification labels
-                    await self._apply_security_labels(alert, tx)
+                        # 9. Apply security classification labels
+                        await self._apply_security_labels(alert, tx)
 
-                    # 10. Create audit trail
-                    await audit_log(
-                        action="POPULATE_COMPREHENSIVE_ALERT",
-                        resource_id=alert.id,
-                        details={
-                            "classification": alert.classification.value,
-                            "risk_score": alert.composite_risk_score,
-                            "assets_count": len(assets),
-                            "events_count": len(events),
-                            "attacks_count": len(attacks),
-                            "intel_count": len(intel_contexts),
-                        },
-                        session=tx,
-                    )
+                        # 10. Create audit trail
+                        await audit_log(
+                            action="POPULATE_COMPREHENSIVE_ALERT",
+                            resource_id=alert.id,
+                            details={
+                                "classification": alert.classification.value,
+                                "risk_score": alert.composite_risk_score,
+                                "assets_count": len(assets),
+                                "events_count": len(events),
+                                "attacks_count": len(attacks),
+                                "intel_count": len(intel_contexts),
+                            },
+                            session=tx,
+                        )
+
+                        return alert
+
+                    # Execute in write transaction
+                    alert = await session.execute_write(_populate_transaction)
 
                     logger.info(
                         f"Successfully populated comprehensive alert data: {alert.id}"
                     )
                     return alert
 
+                except Exception as tx_error:
+                    logger.error(f"Transaction error in alert population: {tx_error}")
+                    raise
+
+        except Neo4jError as e:
+            logger.error(f"Neo4j error populating comprehensive alert data: {e}")
+            raise AlertProcessingException(
+                "Neo4j database error during alert population",
+                error_code="NEO4J_POPULATION_ERROR",
+                details={"neo4j_error": str(e)},
+            )
         except Exception as e:
             logger.error(f"Error populating comprehensive alert data: {e}")
             raise AlertProcessingException(
@@ -181,17 +201,21 @@ class EnhancedNeo4jPopulationService:
         attributes = enhanced_alert_data.get("attributes", {})
         comprehensive_data = enhanced_alert_data.get("comprehensive_data", {})
 
-        # Create base alert object
+        # Create base alert object with proper field conversion
         alert = Alert(
             id=sanitize_cypher_input(str(alert_id)),
             tenant_id=attributes.get("tenantId"),
             customer_id=attributes.get("customerId"),
             name=attributes.get("name"),
             message=attributes.get("message"),
-            severity=attributes.get("severity", 0),
+            # Handle severity conversion - API returns string, we store both
+            severity=attributes.get("severity"),
+            severity_numeric=convert_severity_to_numeric(attributes.get("severity")),
             score=attributes.get("score", 0),
             confidence=attributes.get("confidence", 0),
-            risk=attributes.get("risk", 0),
+            # Handle risk conversion - API may return string or numeric
+            risk=attributes.get("risk"),
+            risk_numeric=convert_risk_to_numeric(attributes.get("risk")),
             rule_id=attributes.get("ruleId"),
             generated_by=attributes.get("generatedBy"),
             sources=attributes.get("sources", []),
@@ -207,8 +231,13 @@ class EnhancedNeo4jPopulationService:
             is_correlated=attributes.get("isCorrelated", False),
             total_event_match_count=attributes.get("totalEventMatchCount", 0),
             alert_aggregation_count=attributes.get("alertAggregationCount", 0),
-            in_timeline=attributes.get("inTimeline", False),
-            in_pin=attributes.get("inPin", False),
+            # New XDR API specific fields
+            attacks=normalize_attacks_field(attributes.get("attacks")),
+            recommended_actions=normalize_recommended_actions(
+                attributes.get("recommendedActions")
+            ),
+            assets_count=attributes.get("assetsCount", 0),
+            supporting_data=attributes.get("supportingData", {}),
             alert_data=enhanced_alert_data,
             related_entities=self._extract_related_entities(enhanced_alert_data),
             processing_status=ProcessingStatus.PROCESSING,
@@ -221,7 +250,37 @@ class EnhancedNeo4jPopulationService:
                     attributes["createdAt"].replace("Z", "+00:00")
                 )
             except ValueError:
-                logger.warning(f"Invalid timestamp format: {attributes['createdAt']}")
+                logger.warning(
+                    f"Invalid createdAt timestamp format: {attributes['createdAt']}"
+                )
+
+        if attributes.get("time"):
+            try:
+                alert.time = datetime.fromisoformat(
+                    attributes["time"].replace("Z", "+00:00")
+                )
+            except ValueError:
+                logger.warning(f"Invalid time timestamp format: {attributes['time']}")
+
+        if attributes.get("updatedAt"):
+            try:
+                alert.updated_at = datetime.fromisoformat(
+                    attributes["updatedAt"].replace("Z", "+00:00")
+                )
+            except ValueError:
+                logger.warning(
+                    f"Invalid updatedAt timestamp format: {attributes['updatedAt']}"
+                )
+
+        if attributes.get("lastAggregatedTime"):
+            try:
+                alert.last_aggregated_time = datetime.fromisoformat(
+                    attributes["lastAggregatedTime"].replace("Z", "+00:00")
+                )
+            except ValueError:
+                logger.warning(
+                    f"Invalid lastAggregatedTime timestamp format: {attributes['lastAggregatedTime']}"
+                )
 
         # Enhanced security analysis
         await self._perform_enhanced_security_analysis(alert, comprehensive_data)
@@ -504,7 +563,7 @@ class EnhancedNeo4jPopulationService:
                 )
 
                 # Create or merge attack node (techniques can be reused)
-                labels = ["Attack", "MITRETechnique"]
+                # labels = ["Attack", "MITRETechnique"]  # Not used in current implementation
 
                 merge_query = """
                 MERGE (attack:Attack:MITRETechnique {technique_id: $technique_id})
@@ -661,7 +720,7 @@ class EnhancedNeo4jPopulationService:
     async def _create_ioc_relationships(
         self,
         enhanced_alert_data: Dict[str, Any],
-        alert: Alert,
+        _alert: Alert,  # Renamed to indicate intentional non-use
         events: List[Event],
         tx: AsyncSession,
     ) -> None:

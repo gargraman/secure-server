@@ -132,10 +132,14 @@ class Alert(BaseNode):
     customer_id: Optional[str] = None
     name: Optional[str] = None
     message: Optional[str] = None
-    severity: int = 0  # 0-5 scale
+    severity: Optional[
+        str
+    ] = None  # API returns string values like "Unknown", "Low", "High", "Critical"
+    severity_numeric: int = 0  # 0-5 scale for internal calculations
     score: int = 0
     confidence: int = 0  # 0-5 scale
-    risk: int = 0  # 0-5 scale
+    risk: Optional[str] = None  # API returns string or numeric, handle both
+    risk_numeric: int = 0  # 0-5 scale for internal calculations
     rule_id: Optional[str] = None
     generated_by: Optional[str] = None
     sources: List[str] = field(default_factory=list)
@@ -153,8 +157,15 @@ class Alert(BaseNode):
     total_event_match_count: int = 0
     alert_aggregation_count: int = 0
     last_aggregated_time: Optional[datetime] = None
-    in_timeline: bool = False
-    in_pin: bool = False
+
+    # XDR API specific fields
+    attacks: List[str] = field(default_factory=list)  # MITRE ATT&CK technique IDs
+    recommended_actions: List[str] = field(
+        default_factory=list
+    )  # Response recommendations
+    assets_count: int = 0  # Asset count from API
+    supporting_data: Dict[str, Any] = field(default_factory=dict)  # Additional context
+    time: Optional[datetime] = None  # Event time from API
 
     # Enhanced security classification properties
     classification: AlertClassification = AlertClassification.INFORMATIONAL
@@ -429,13 +440,82 @@ def create_relationship_query(
     return query, parameters
 
 
+# XDR API field conversion utilities
+def convert_severity_to_numeric(severity_str: Optional[str]) -> int:
+    """Convert XDR API severity string to numeric scale (0-5)"""
+    if not severity_str:
+        return 0
+
+    severity_map = {
+        "unknown": 0,
+        "informational": 1,
+        "low": 2,
+        "medium": 3,
+        "high": 4,
+        "critical": 5,
+    }
+
+    return severity_map.get(str(severity_str).lower(), 0)
+
+
+def convert_risk_to_numeric(risk_value: Any) -> int:
+    """Convert XDR API risk value (string or numeric) to numeric scale (0-5)"""
+    if risk_value is None:
+        return 0
+
+    # If already numeric, normalize to 0-5 scale
+    if isinstance(risk_value, (int, float)):
+        return max(0, min(5, int(risk_value)))
+
+    # If string, convert like severity
+    risk_map = {"unknown": 0, "low": 2, "medium": 3, "high": 4, "critical": 5}
+
+    return risk_map.get(str(risk_value).lower(), 0)
+
+
+def normalize_attacks_field(attacks_data: Any) -> List[str]:
+    """Normalize attacks field from XDR API to list of technique IDs"""
+    if not attacks_data:
+        return []
+
+    if isinstance(attacks_data, str):
+        # Single attack technique
+        return [attacks_data]
+    elif isinstance(attacks_data, list):
+        # Multiple attack techniques
+        return [str(attack) for attack in attacks_data if attack]
+    elif isinstance(attacks_data, dict):
+        # Extract technique IDs from attack objects
+        techniques = []
+        if "techniques" in attacks_data:
+            techniques.extend(attacks_data["techniques"])
+        if "technique_id" in attacks_data:
+            techniques.append(attacks_data["technique_id"])
+        return techniques
+
+    return []
+
+
+def normalize_recommended_actions(actions_data: Any) -> List[str]:
+    """Normalize recommended actions field from XDR API"""
+    if not actions_data:
+        return []
+
+    if isinstance(actions_data, str):
+        return [actions_data]
+    elif isinstance(actions_data, list):
+        return [str(action) for action in actions_data if action]
+
+    return []
+
+
 # Security classification utility functions
 def calculate_composite_risk_score(
     alert: Alert, asset_count: int = 0, max_tactic_priority: int = 0
 ) -> float:
     """Calculate composite risk score based on enhanced security analysis"""
     base_score = (
-        (alert.severity * 2)
+        (alert.severity_numeric * 2)
         + (alert.confidence * 1.5)
         + (asset_count * 0.5)
         + (max_tactic_priority * 1.0)

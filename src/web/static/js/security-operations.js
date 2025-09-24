@@ -26,8 +26,8 @@ const SecurityOperations = {
 
             if (!indicator) return;
 
-            const level = threatData.level.toLowerCase();
-            const levelText = threatData.level;
+            const level = threatData.threat_level.current_level.toLowerCase();
+            const levelText = threatData.threat_level.current_level;
 
             // Update indicator class and text
             indicator.className = `badge threat-level-${level}`;
@@ -39,10 +39,10 @@ const SecurityOperations = {
             // Update title with additional info
             indicator.title = `Threat Level: ${levelText}\nLast Updated: ${new Date().toLocaleTimeString()}`;
 
-            // Show notification for threat level changes
-            if (threatData.changed) {
-                this.showThreatLevelChangeNotification(levelText, threatData.reason);
-            }
+            // Show notification for threat level changes (placeholder - API doesn't currently support change detection)
+            // if (threatData.changed) {
+            //     this.showThreatLevelChangeNotification(levelText, threatData.reason);
+            // }
 
         } catch (error) {
             console.error('Error updating threat level:', error);
