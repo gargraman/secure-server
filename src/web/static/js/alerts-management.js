@@ -77,7 +77,7 @@ const AlertManagement = {
             Utils.setLoading('alertsTableBody', true);
 
             const queryParams = new URLSearchParams(this.currentFilters);
-            const alerts = await Utils.apiRequest(`/api/alerts?${queryParams}`);
+            const alerts = await Utils.apiRequest(`/alerts?${queryParams}`);
 
             this.renderAlerts(alerts.alerts || []);
             this.updateAlertCount(alerts.total || 0);
@@ -551,7 +551,7 @@ const AlertManagement = {
 
     loadAlertDetails: async function(alertId) {
         try {
-            const alert = await Utils.apiRequest(`/api/alerts/${alertId}`);
+            const alert = await Utils.apiRequest(`/alerts/${alertId}`);
             this.renderAlertDetails(alert);
         } catch (error) {
             console.error('Error loading alert details:', error);
@@ -668,7 +668,7 @@ const AlertManagement = {
 
     loadInvestigationGraph: async function(alertId) {
         try {
-            const graphData = await Utils.apiRequest(`/api/alerts/${alertId}/graph`);
+            const graphData = await Utils.apiRequest(`/alerts/${alertId}/graph`);
 
             // Initialize Cytoscape.js graph
             if (window.GraphVisualization) {

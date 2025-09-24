@@ -659,7 +659,7 @@ const Dashboard = {
     },
 
     assignToMe: function(alertId) {
-        Utils.apiRequest(`/api/alerts/${alertId}/assign`, {
+        Utils.apiRequest(`/alerts/${alertId}/assign`, {
             method: 'POST',
             body: JSON.stringify({ assignee: 'current_user' })
         }).then(() => {
