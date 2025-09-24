@@ -170,14 +170,20 @@ async def process_alerts_comprehensive(alerts: List[Dict]) -> None:
             )
             for alert in new_alerts:
                 try:
-                    # Fallback: Use the old method for backward compatibility
+                    # Fallback: Use comprehensive data extraction with Neo4j storage
                     enhanced_alert_data = await fetch_comprehensive_security_data(alert)
-                    save_enhanced_alert_to_file(enhanced_alert_data)
-                    logger.info(f"Fallback: Processed alert {alert.get('id')}")
+                    await save_enhanced_alert_to_neo4j(enhanced_alert_data)
+                    logger.info(f"Fallback: Processed alert {alert.get('id')} and stored to Neo4j")
                 except Exception as e:
                     logger.error(
-                        f"Fallback processing failed for alert {alert.get('id', 'unknown')}: {e}"
+                        f"Fallback Neo4j processing failed for alert {alert.get('id', 'unknown')}: {e}"
                     )
+                    # Last resort: try basic Neo4j storage
+                    try:
+                        await save_basic_alert_to_neo4j(alert)
+                        logger.info(f"Emergency: Basic alert {alert.get('id')} stored to Neo4j")
+                    except Exception as basic_error:
+                        logger.error(f"All storage methods failed for alert {alert.get('id')}: {basic_error}")
 
     except Exception as e:
         logger.error(f"Error in comprehensive alert processing: {e}")
@@ -201,12 +207,12 @@ async def initialize_services() -> None:
         resource_manager = ResourceManager()
         unified_processor = UnifiedAlertProcessor(
             coordinator=service_coordinator,
-            storage_backends=["graph", "file"],
+            storage_backends=["graph"],  # Neo4j-first approach
             data_extractor=data_extractor,
         )
 
         logger.info(
-            "Successfully initialized enhanced security services and unified components"
+            "Successfully initialized enhanced security services with Neo4j graph database storage"
         )
 
     except Exception as e:
@@ -708,70 +714,40 @@ async def extract_iocs_artifacts(alert: Dict) -> List[Dict[str, Any]]:
     return iocs
 
 
-def save_enhanced_alert_to_file(enhanced_alert: Dict) -> None:
+async def save_enhanced_alert_to_neo4j(enhanced_alert: Dict) -> None:
     """
-    Save enhanced alert data to file for persistence and backward compatibility
+    Save enhanced alert data to Neo4j graph database for comprehensive security analysis
 
     Args:
         enhanced_alert: Enhanced alert data with comprehensive security information
     """
     alert_id = enhanced_alert.get("id", "unknown")
 
-    # Ensure alerts directory exists
-    os.makedirs("alerts", exist_ok=True)
-
-    # Write enhanced alert to file
-    timestamp = int(datetime.now().timestamp())
-    filename = f"alerts/enhanced_alert_{alert_id}_{timestamp}.json"
-
     try:
-        with open(filename, "w") as f:
-            json.dump(enhanced_alert, f, indent=2, default=str)
+        # Get alert processing service from global service coordinator
+        if not alert_processing_service:
+            logger.warning(f"Alert processing service not available for alert {alert_id}, skipping Neo4j storage")
+            return
 
-        # Also save a summary file for quick reference
-        summary_filename = f"alerts/summary_{alert_id}_{timestamp}.json"
-        summary_data = {
-            "alert_id": alert_id,
-            "timestamp": timestamp,
-            "basic_info": {
-                "name": enhanced_alert.get("attributes", {}).get("name"),
-                "severity": enhanced_alert.get("attributes", {}).get("severity"),
-                "status": enhanced_alert.get("attributes", {}).get("status"),
-                "created_at": enhanced_alert.get("attributes", {}).get("createdAt"),
-            },
-            "comprehensive_summary": {
-                "assets_count": len(
-                    enhanced_alert.get("comprehensive_data", {}).get("assets", [])
-                ),
-                "events_count": len(
-                    enhanced_alert.get("comprehensive_data", {}).get("events", [])
-                ),
-                "mitre_techniques_count": len(
-                    enhanced_alert.get("comprehensive_data", {}).get(
-                        "mitre_techniques", []
-                    )
-                ),
-                "threat_intel_count": len(
-                    enhanced_alert.get("comprehensive_data", {}).get(
-                        "threat_intelligence", []
-                    )
-                ),
-                "iocs_count": len(
-                    enhanced_alert.get("comprehensive_data", {}).get("iocs", [])
-                ),
-            },
-            "files": {"full_data": filename, "summary": summary_filename},
-        }
+        # Store enhanced alert using the alert processing service
+        processed_alert = await alert_processing_service.store_enhanced_alert(enhanced_alert)
 
-        with open(summary_filename, "w") as f:
-            json.dump(summary_data, f, indent=2, default=str)
-
-        logger.debug(
-            f"Saved enhanced alert {alert_id} to {filename} and summary to {summary_filename}"
+        # Log successful storage with enhanced details
+        comprehensive_data = enhanced_alert.get("comprehensive_data", {})
+        logger.info(
+            f"Successfully stored enhanced alert {alert_id} to Neo4j database. "
+            f"Classification: {processed_alert.classification.value}, "
+            f"Risk Score: {processed_alert.composite_risk_score:.2f}, "
+            f"Assets: {len(comprehensive_data.get('assets', []))}, "
+            f"Events: {len(comprehensive_data.get('events', []))}, "
+            f"MITRE Techniques: {len(comprehensive_data.get('mitre_techniques', []))}, "
+            f"Threat Intel: {len(comprehensive_data.get('threat_intelligence', []))}"
         )
 
     except Exception as e:
-        logger.error(f"Failed to save enhanced alert {alert_id} to file: {e}")
+        logger.error(f"Failed to save enhanced alert {alert_id} to Neo4j database: {e}")
+        # Could add fallback file storage here if needed for reliability
+        raise
 
 
 async def run_poller(config: XDRConfig) -> None:
@@ -787,7 +763,7 @@ async def run_poller(config: XDRConfig) -> None:
         f"Starting Enhanced XDR Security Data Polling Service (interval: {config.poll_interval}s)"
     )
     logger.info(
-        "Enhanced features: Assets, Events, MITRE ATT&CK, Threat Intelligence, Graph Database Integration"
+        "Enhanced features: Assets, Events, MITRE ATT&CK, Threat Intelligence, Neo4j Graph Database Integration"
     )
 
     # Check if we're in development mode (using dummy credentials)
@@ -821,7 +797,7 @@ async def run_poller(config: XDRConfig) -> None:
                 f"Development mode: XDR API authentication failed (expected with dummy credentials): {e}"
             )
             logger.info(
-                "Enhanced XDR Poller will continue running in development mode without actual API polling"
+                "Enhanced XDR Poller will continue running in development mode without actual API polling (Neo4j database ready)"
             )
             # In development mode, just keep the service running without polling
             while not shutdown_requested:
@@ -833,11 +809,11 @@ async def run_poller(config: XDRConfig) -> None:
             logger.error(f"XDR API Error: {e}")
             return
     except Neo4jConnectionException as e:
-        logger.error(f"Database connection error: {e}")
-        logger.info("Continuing with file-based storage only")
-        # Continue running but with reduced functionality
+        logger.error(f"Neo4j database connection error: {e}")
+        logger.info("Neo4j unavailable - XDR poller will continue but alerts will not be stored until database is available")
+        # Continue running but with reduced functionality - alerts will be logged but not stored
         alert_processing_service = None
-        await run_basic_poller(config)
+        await run_basic_poller_with_degraded_mode(config)
     except Exception as e:
         logger.error(f"Unexpected error in enhanced poller: {e}")
         logger.info("Falling back to basic polling mode")
@@ -859,22 +835,18 @@ async def run_basic_poller(config: XDRConfig) -> None:
     """
     global shutdown_requested
 
-    logger.info("Running in basic polling mode (file storage only)")
+    logger.info("Running in basic polling mode with Neo4j database storage")
 
     try:
         async with XDRAlertClient(config) as client:
-            # Use basic alert handler for file storage only
+            # Use basic alert handler for Neo4j storage
             def basic_alert_handler(alerts: List[Dict]) -> None:
                 for alert in alerts:
                     alert_id = alert.get("id")
                     if alert_id and alert_id not in processed_alert_ids:
                         processed_alert_ids.add(alert_id)
-                        # Basic file storage (backward compatibility)
-                        try:
-                            save_basic_alert_to_file(alert)
-                            logger.info(f"Saved basic alert {alert_id} to file")
-                        except Exception as e:
-                            logger.error(f"Failed to save basic alert {alert_id}: {e}")
+                        # Store to Neo4j with basic enhancement
+                        asyncio.create_task(handle_basic_alert_safely(alert))
 
             await client.start_polling(config.poll_interval, basic_alert_handler)
 
@@ -887,26 +859,101 @@ async def run_basic_poller(config: XDRConfig) -> None:
         logger.error(f"Error in basic polling mode: {e}")
 
 
-def save_basic_alert_to_file(alert: Dict) -> None:
+async def run_basic_poller_with_degraded_mode(config: XDRConfig) -> None:
     """
-    Basic alert file storage for backward compatibility
+    Degraded polling mode when Neo4j is unavailable - alerts are logged but not stored
+
+    Args:
+        config: XDR client configuration
+    """
+    global shutdown_requested
+
+    logger.warning("Running in degraded mode - alerts will be logged but not stored due to Neo4j unavailability")
+
+    try:
+        async with XDRAlertClient(config) as client:
+            # Use degraded alert handler that only logs alerts
+            def degraded_alert_handler(alerts: List[Dict]) -> None:
+                for alert in alerts:
+                    alert_id = alert.get("id")
+                    if alert_id and alert_id not in processed_alert_ids:
+                        processed_alert_ids.add(alert_id)
+                        # Log alert details but don't store
+                        attrs = alert.get("attributes", {})
+                        logger.warning(
+                            f"DEGRADED MODE - Alert {alert_id}: {attrs.get('name', 'Unnamed')} "
+                            f"(Severity: {attrs.get('severity', 'Unknown')}) - "
+                            f"NOT STORED due to Neo4j unavailability"
+                        )
+
+            await client.start_polling(config.poll_interval, degraded_alert_handler)
+
+            while not shutdown_requested:
+                await asyncio.sleep(1)
+
+            await client.stop_polling()
+
+    except Exception as e:
+        logger.error(f"Error in degraded polling mode: {e}")
+
+
+async def handle_basic_alert_safely(alert: Dict) -> None:
+    """
+    Safely handle basic alert storage to Neo4j with error handling
+
+    Args:
+        alert: Alert dictionary from XDR API
+    """
+    try:
+        await save_basic_alert_to_neo4j(alert)
+        logger.info(f"Saved basic alert {alert.get('id')} to Neo4j database")
+    except Exception as e:
+        logger.error(f"Failed to save basic alert {alert.get('id')}: {e}")
+
+
+async def save_basic_alert_to_neo4j(alert: Dict) -> None:
+    """
+    Basic alert Neo4j storage with minimal enhancement for graph database compatibility
 
     Args:
         alert: Alert dictionary from XDR API
     """
     alert_id = alert.get("id", "unknown")
 
-    # Ensure alerts directory exists
-    os.makedirs("alerts", exist_ok=True)
-
-    # Write alert to file
-    filename = f"alerts/alert_{alert_id}_{int(datetime.now().timestamp())}.json"
     try:
-        with open(filename, "w") as f:
-            json.dump(alert, f, indent=2)
-        logger.debug(f"Saved basic alert {alert_id} to {filename}")
+        # Get alert processing service from global service coordinator
+        if not alert_processing_service:
+            logger.warning(f"Alert processing service not available for basic alert {alert_id}, unable to store")
+            return
+
+        # Convert basic alert to enhanced format for consistent Neo4j storage
+        basic_enhanced_alert = alert.copy()
+        basic_enhanced_alert["comprehensive_data"] = {
+            "assets": [],
+            "events": [],
+            "mitre_techniques": [],
+            "threat_intelligence": [],
+            "iocs": [],
+            "analysis_metadata": {
+                "collection_timestamp": datetime.now(timezone.utc).isoformat(),
+                "data_sources": ["xdr_api"],
+                "correlation_status": "basic_mode",
+                "enhancement_status": "minimal",
+            },
+        }
+
+        # Store basic alert using the alert processing service
+        processed_alert = await alert_processing_service.store_enhanced_alert(basic_enhanced_alert)
+
+        logger.info(
+            f"Successfully stored basic alert {alert_id} to Neo4j database. "
+            f"Classification: {processed_alert.classification.value}, "
+            f"Risk Score: {processed_alert.composite_risk_score:.2f}"
+        )
+
     except Exception as e:
-        logger.error(f"Failed to save basic alert {alert_id} to file: {e}")
+        logger.error(f"Failed to save basic alert {alert_id} to Neo4j database: {e}")
+        raise
 
 
 async def cleanup_services() -> None:
@@ -1017,8 +1064,8 @@ async def main() -> None:
     logger.info("  - MITRE ATT&CK technique mapping")
     logger.info("  - Threat intelligence context")
     logger.info("  - IOC extraction and analysis")
-    logger.info("  - Graph database integration")
-    logger.info("  - Enhanced security classification")
+    logger.info("  - Neo4j graph database storage")
+    logger.info("  - Enhanced security classification and risk scoring")
     logger.info("=" * 80)
 
     # Handle basic mode override
